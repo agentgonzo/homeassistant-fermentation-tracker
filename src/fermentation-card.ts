@@ -33,6 +33,9 @@ export class FermentationTrackerCard extends LitElement {
   @state() private _historicalValues: Record<string, number> = {};
   // Gravity at the start of the graph window (~72h ago) — used as OG
   @state() private _originalGravity?: number;
+  // Linear-regression slope of gravity over the last 24h, in SG per hour.
+  // Used to decide whether fermentation has finished (slope * 24 > -0.0002).
+  @state() private _gravitySlope24h?: number;
   private _historicalKey?: string;
   private _historicalRefreshTimer?: ReturnType<typeof setInterval>;
 
@@ -64,6 +67,13 @@ export class FermentationTrackerCard extends LitElement {
   // brief in-range readings while the iSpindel is being moved/handled.
   private static readonly SUPPORT_WINDOW_HOURS = 4;
   private static readonly SUPPORT_TOLERANCE_SG = 0.02;
+  // Fermentation is considered finished when the trend over the last 24h is
+  // dropping by less than this much SG (or rising). 0.0002 is well within
+  // the noise floor of an iSpindel.
+  private static readonly FERMENTATION_FINISHED_THRESHOLD_SG = 0.0002;
+  // Need at least this many points in the 24h window for a meaningful slope.
+  private static readonly TREND_MIN_POINTS = 5;
+
   // A plausible reading is dropped if there's an out-of-range "junk" reading
   // within ±this many minutes — a strong signal that the iSpindel was being
   // moved or settling, even though one stray reading happened to land in range.
@@ -89,6 +99,44 @@ export class FermentationTrackerCard extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 16px;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--secondary-background-color);
+      font-size: 0.85em;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-active .status-dot {
+      background: var(--warning-color, #ff9800);
+      box-shadow: 0 0 0 0 currentColor;
+      animation: status-pulse 2.4s ease-out infinite;
+      color: var(--warning-color, #ff9800);
+    }
+    .status-finished .status-dot {
+      background: var(--success-color, #4caf50);
+    }
+    @keyframes status-pulse {
+      0%   { box-shadow: 0 0 0 0 currentColor; }
+      80%  { box-shadow: 0 0 0 8px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+    .status-text {
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+    .status-detail {
+      margin-left: auto;
+      color: var(--secondary-text-color);
+      font-size: 0.92em;
     }
     .primary-metrics {
       display: grid;
@@ -508,6 +556,8 @@ export class FermentationTrackerCard extends LitElement {
 
     // OG (gravity at start of graph window) drives attenuation/ABV — always fetch.
     await this._fetchOriginalGravity();
+    // 24h trend slope drives the fermentation-finished tile — always fetch.
+    await this._fetchTrendSlope();
 
     if (this._config?.show_delta_24h === false) return;
 
@@ -569,6 +619,79 @@ export class FermentationTrackerCard extends LitElement {
       }
     } catch (e) {
       console.error("[fermentation-tracker] failed to fetch OG", e);
+    }
+  }
+
+  // Fetches the last 24h of gravity readings and computes the linear-
+  // regression slope (SG per hour). Used to decide whether fermentation
+  // has finished — relying on the slope rather than first/last values
+  // smooths over reading noise.
+  private async _fetchTrendSlope(): Promise<void> {
+    if (!this.hass || !this._gravityEntityId) return;
+    const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const end = new Date();
+    try {
+      const result = await this.hass.callWS<
+        Record<string, Array<{ s: string; lu?: number; lc?: number }>>
+      >({
+        type: "history/history_during_period",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        entity_ids: [this._gravityEntityId],
+        minimal_response: true,
+        no_attributes: true,
+      });
+      const states = result[this._gravityEntityId] ?? [];
+      // Filter to plausible-range readings only — junk skews the slope.
+      const points: { t: number; v: number }[] = [];
+      for (const s of states) {
+        const tRaw =
+          typeof s.lu === "number"
+            ? s.lu
+            : typeof s.lc === "number"
+              ? s.lc
+              : 0;
+        if (tRaw <= 0) continue;
+        const t = tRaw < 1e12 ? tRaw * 1000 : tRaw;
+        const v = parseFloat(s.s);
+        if (isNaN(v)) continue;
+        if (
+          v < FermentationTrackerCard.MIN_PLAUSIBLE_SG ||
+          v > FermentationTrackerCard.MAX_PLAUSIBLE_SG
+        ) {
+          continue;
+        }
+        points.push({ t, v });
+      }
+      if (points.length < FermentationTrackerCard.TREND_MIN_POINTS) {
+        this._gravitySlope24h = undefined;
+        return;
+      }
+
+      // Linear regression: slope of SG vs time-in-hours, with t=0 anchored
+      // at the first point to keep the numbers small.
+      const t0 = points[0].t;
+      let sumX = 0;
+      let sumY = 0;
+      let sumXY = 0;
+      let sumX2 = 0;
+      const n = points.length;
+      for (const p of points) {
+        const x = (p.t - t0) / 3600000;
+        const y = p.v;
+        sumX += x;
+        sumY += y;
+        sumXY += x * y;
+        sumX2 += x * x;
+      }
+      const denom = n * sumX2 - sumX * sumX;
+      if (denom === 0) {
+        this._gravitySlope24h = undefined;
+        return;
+      }
+      this._gravitySlope24h = (n * sumXY - sumX * sumY) / denom;
+    } catch (e) {
+      console.error("[fermentation-tracker] failed to fetch trend slope", e);
     }
   }
 
@@ -817,12 +940,44 @@ export class FermentationTrackerCard extends LitElement {
         ? primaryTemp.value - primaryTemp24h
         : undefined;
 
+    // Fermentation finished detection — based on the 24h regression slope, not
+    // raw values, so it's robust to reading noise. Returns:
+    //   - "active": gravity dropping faster than threshold over 24h
+    //   - "finished": flat or rising trend (or below threshold drop)
+    //   - undefined: not enough data yet (less than TREND_MIN_POINTS)
+    const slopePerHour = this._gravitySlope24h;
+    const change24h = slopePerHour !== undefined ? slopePerHour * 24 : undefined;
+    const fermentationStatus: "active" | "finished" | undefined =
+      change24h === undefined
+        ? undefined
+        : change24h > -FermentationTrackerCard.FERMENTATION_FINISHED_THRESHOLD_SG
+          ? "finished"
+          : "active";
+
     return html`
       <ha-card>
         <div class="card-header">
           <div class="name">${cardTitle}</div>
         </div>
         <div class="card-content">
+          ${fermentationStatus
+            ? html`
+                <div class="status status-${fermentationStatus}" title=${`24h gravity trend: ${change24h !== undefined ? change24h.toFixed(4) : "—"} SG`}>
+                  <span class="status-dot"></span>
+                  <span class="status-text">
+                    ${fermentationStatus === "active"
+                      ? "Fermenting"
+                      : "Fermentation complete"}
+                  </span>
+                  ${change24h !== undefined
+                    ? html`<span class="status-detail">
+                        ${change24h >= 0 ? "+" : "−"}${Math.abs(change24h).toFixed(4)} SG / 24h
+                      </span>`
+                    : nothing}
+                </div>
+              `
+            : nothing}
+
           <div class="primary-metrics">
             <div class="metric gravity">
               <span class="metric-label">Gravity</span>
