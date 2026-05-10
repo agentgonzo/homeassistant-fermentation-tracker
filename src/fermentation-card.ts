@@ -300,6 +300,7 @@ export class FermentationTrackerCard extends LitElement {
         name: "Gravity",
         yaxis_id: "gravity",
         stroke_width: 2,
+        float_precision: 4,
       });
       yaxis.push({
         id: "gravity",
@@ -313,6 +314,7 @@ export class FermentationTrackerCard extends LitElement {
           entity,
           yaxis_id: "temperature",
           stroke_width: 2,
+          float_precision: 1,
         });
       });
       yaxis.push({
@@ -330,6 +332,7 @@ export class FermentationTrackerCard extends LitElement {
           yaxis_id: "signal",
           stroke_width: 1,
           opacity: 0.5,
+          float_precision: 0,
         });
         yaxis.push({
           id: "signal",
@@ -344,6 +347,7 @@ export class FermentationTrackerCard extends LitElement {
           yaxis_id: "battery",
           stroke_width: 1,
           opacity: 0.5,
+          float_precision: 2,
         });
         yaxis.push({
           id: "battery",
