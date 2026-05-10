@@ -1,11 +1,7 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import memoizeOne from "memoize-one";
-import type { HomeAssistant, FermentationCardConfig, DeviceRegistryEntry } from "./types";
+import type { HomeAssistant, FermentationCardConfig } from "./types";
 import { KNOWN_FERMENTATION_DOMAINS } from "./const";
-import { deviceHasGravityEntity } from "./utils/entity-discovery";
-
-type ConfigEntry = { entry_id: string; domain: string };
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -13,45 +9,41 @@ declare global {
   }
 }
 
+type HaFormSchema = ReadonlyArray<Record<string, unknown>>;
+
+const computeLabel = (schema: { name: string }): string => {
+  switch (schema.name) {
+    case "device_id":
+      return "Fermentation Device";
+    case "name":
+      return "Card title (optional)";
+    case "gravity_unit":
+      return "Also show gravity as";
+    case "original_gravity":
+      return "Original Gravity (SG)";
+    case "show_graph":
+      return "Show gravity trend graph";
+    case "gravity_entity":
+      return "Gravity entity (auto-detected if blank)";
+    case "temperature_entity":
+      return "Temperature entity (auto-detected if blank)";
+    default:
+      return schema.name;
+  }
+};
+
 @customElement("fermentation-tracker-card-editor")
 export class FermentationCardEditor extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @state() private _config?: FermentationCardConfig;
-  @state() private _configEntryDomains: Record<string, string> = {};
-  @state() private _componentsReady = false;
 
   static styles = css`
-    .card-config {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding: 16px 0;
-    }
-    ha-device-picker,
-    ha-textfield,
-    ha-select {
+    :host {
       display: block;
-      width: 100%;
     }
-    .row {
-      display: flex;
-      gap: 16px;
-    }
-    .row > * {
-      flex: 1;
-    }
-    .hint {
-      color: var(--secondary-text-color);
-      font-size: 0.9em;
-      margin: 0;
-    }
-    .section-label {
-      font-size: 0.85em;
-      font-weight: 500;
-      color: var(--secondary-text-color);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: -8px;
+    ha-form {
+      display: block;
+      padding: 16px 0;
     }
   `;
 
@@ -59,203 +51,112 @@ export class FermentationCardEditor extends LitElement {
     this._config = config;
   }
 
-  protected async firstUpdated(): Promise<void> {
-    await this._loadHaComponents();
+  private _buildSchema(deviceId: string | undefined): HaFormSchema {
+    const fermentationFilters = [...KNOWN_FERMENTATION_DOMAINS].map((domain) => ({
+      integration: domain,
+    }));
 
-    const entries = await this.hass.callWS<ConfigEntry[]>({
-      type: "config_entries/get",
-    });
-    this._configEntryDomains = Object.fromEntries(
-      entries.map((e) => [e.entry_id, e.domain])
-    );
-    this._componentsReady = true;
-  }
+    const baseSchema: Array<Record<string, unknown>> = [
+      {
+        name: "device_id",
+        required: true,
+        selector: {
+          device: { filter: fermentationFilters },
+        },
+      },
+    ];
 
-  // HA lazy-loads picker components only when a built-in card's editor opens.
-  // This trick instantiates a built-in card and asks for its config element,
-  // which transitively registers ha-device-picker / ha-entity-picker etc.
-  private async _loadHaComponents(): Promise<void> {
-    if (
-      customElements.get("ha-device-picker") &&
-      customElements.get("ha-entity-picker")
-    ) {
-      return;
-    }
-    const win = window as unknown as {
-      loadCardHelpers?: () => Promise<{
-        createCardElement: (config: { type: string }) => HTMLElement & {
-          constructor: { getConfigElement?: () => Promise<HTMLElement> };
-        };
-      }>;
-    };
-    const helpers = await win.loadCardHelpers?.();
-    if (!helpers) return;
-    try {
-      const card = helpers.createCardElement({
-        type: "markdown",
-        content: "_",
-      } as { type: string });
-      await card.constructor.getConfigElement?.();
-    } catch {
-      // ignore
-    }
-  }
-
-  private _deviceFilter = memoizeOne(
-    (configEntryDomains: Record<string, string>) =>
-      (device: DeviceRegistryEntry): boolean => {
-        // Stage 1: known fermentation integration domain
-        const primaryEntry = device.primary_config_entry;
-        if (primaryEntry) {
-          const domain = configEntryDomains[primaryEntry];
-          if (domain && KNOWN_FERMENTATION_DOMAINS.has(domain)) return true;
+    if (deviceId) {
+      baseSchema.push(
+        { name: "name", selector: { text: {} } },
+        {
+          name: "gravity_unit",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                { value: "", label: "SG only" },
+                { value: "Plato", label: "+ Plato (°P)" },
+                { value: "Brix", label: "+ Brix (°Bx)" },
+              ],
+            },
+          },
+        },
+        {
+          name: "original_gravity",
+          selector: {
+            number: { min: 0.99, max: 1.2, step: 0.001, mode: "box" },
+          },
+        },
+        { name: "show_graph", selector: { boolean: {} } },
+        {
+          name: "gravity_entity",
+          selector: {
+            entity: {
+              domain: "sensor",
+              filter: { device_id: deviceId },
+            },
+          },
+        },
+        {
+          name: "temperature_entity",
+          selector: {
+            entity: {
+              domain: "sensor",
+              filter: { device_id: deviceId },
+            },
+          },
         }
-        const knownByEntry = device.config_entries.some((entryId) => {
-          const domain = configEntryDomains[entryId];
-          return domain !== undefined && KNOWN_FERMENTATION_DOMAINS.has(domain);
-        });
-        if (knownByEntry) return true;
+      );
+    }
 
-        // Stage 2: device has a gravity sensor entity
-        return deviceHasGravityEntity(this.hass, device.id);
-      }
-  );
+    return baseSchema;
+  }
 
   protected render() {
     if (!this.hass || !this._config) return nothing;
-    if (!this._componentsReady) {
-      return html`<div class="card-config"><p class="hint">Loading…</p></div>`;
-    }
+
+    const schema = this._buildSchema(this._config.device_id);
+    // Strip undefined values so ha-form treats them as "not set"
+    const data = Object.fromEntries(
+      Object.entries(this._config).filter(([, v]) => v !== undefined)
+    );
 
     return html`
-      <div class="card-config">
-        <ha-device-picker
-          .hass=${this.hass}
-          .value=${this._config.device_id ?? ""}
-          .label=${"Fermentation Device"}
-          @value-changed=${this._deviceChanged}
-        ></ha-device-picker>
-
-        ${this._config.device_id
-          ? html`
-              <ha-textfield
-                .label=${"Card title (optional)"}
-                .value=${this._config.name ?? ""}
-                .configValue=${"name"}
-                @change=${this._valueChanged}
-              ></ha-textfield>
-
-              <div class="row">
-                <ha-select
-                  .label=${"Also show gravity as"}
-                  .value=${this._config.gravity_unit ?? ""}
-                  .configValue=${"gravity_unit"}
-                  @selected=${this._selectChanged}
-                  @closed=${(e: Event) => e.stopPropagation()}
-                >
-                  <mwc-list-item value="">SG only</mwc-list-item>
-                  <mwc-list-item value="Plato">+ Plato (°P)</mwc-list-item>
-                  <mwc-list-item value="Brix">+ Brix (°Bx)</mwc-list-item>
-                </ha-select>
-
-                <ha-textfield
-                  type="number"
-                  .label=${"Original Gravity (SG)"}
-                  .value=${this._config.original_gravity?.toString() ?? ""}
-                  .configValue=${"original_gravity"}
-                  placeholder="e.g. 1.052"
-                  min="0.990"
-                  max="1.200"
-                  step="0.001"
-                  @change=${this._numberChanged}
-                ></ha-textfield>
-              </div>
-
-              <ha-formfield .label=${"Show gravity trend graph"}>
-                <ha-switch
-                  .checked=${this._config.show_graph !== false}
-                  .configValue=${"show_graph"}
-                  @change=${this._switchChanged}
-                ></ha-switch>
-              </ha-formfield>
-
-              <div class="section-label">Entity overrides (optional)</div>
-
-              <ha-entity-picker
-                .hass=${this.hass}
-                .value=${this._config.gravity_entity ?? ""}
-                .label=${"Gravity entity (auto-detected if blank)"}
-                .configValue=${"gravity_entity"}
-                allow-custom-entity
-                @value-changed=${this._entityPickerChanged}
-              ></ha-entity-picker>
-
-              <ha-entity-picker
-                .hass=${this.hass}
-                .value=${this._config.temperature_entity ?? ""}
-                .label=${"Temperature entity (auto-detected if blank)"}
-                .configValue=${"temperature_entity"}
-                allow-custom-entity
-                @value-changed=${this._entityPickerChanged}
-              ></ha-entity-picker>
-            `
-          : html`<p class="hint">Select a fermentation device above to configure the card.</p>`}
-      </div>
+      <ha-form
+        .hass=${this.hass}
+        .data=${data}
+        .schema=${schema}
+        .computeLabel=${computeLabel}
+        @value-changed=${this._valueChanged}
+      ></ha-form>
     `;
   }
 
-  private _deviceChanged(ev: CustomEvent) {
+  private _valueChanged(ev: CustomEvent): void {
     ev.stopPropagation();
     if (!this._config) return;
-    const deviceId = ev.detail.value as string;
-    this._fireConfigChanged({
-      ...this._config,
-      device_id: deviceId || undefined,
-      gravity_entity: undefined,
-      temperature_entity: undefined,
-    });
-  }
+    const newConfig = { ...this._config, ...ev.detail.value };
 
-  private _valueChanged(ev: Event) {
-    if (!this._config) return;
-    const target = ev.target as HTMLInputElement & { configValue: keyof FermentationCardConfig };
-    this._fireConfigChanged({ ...this._config, [target.configValue]: target.value });
-  }
+    // Normalise empty strings to undefined for cleaner stored config
+    for (const key of Object.keys(newConfig) as Array<
+      keyof FermentationCardConfig
+    >) {
+      if (newConfig[key] === "" || newConfig[key] === null) {
+        newConfig[key] = undefined as never;
+      }
+    }
 
-  private _numberChanged(ev: Event) {
-    if (!this._config) return;
-    const target = ev.target as HTMLInputElement & { configValue: keyof FermentationCardConfig };
-    const value = target.value ? parseFloat(target.value) : undefined;
-    this._fireConfigChanged({ ...this._config, [target.configValue]: value });
-  }
+    // If the device changed, drop entity overrides so auto-discovery runs
+    if (newConfig.device_id !== this._config.device_id) {
+      newConfig.gravity_entity = undefined;
+      newConfig.temperature_entity = undefined;
+    }
 
-  private _selectChanged(ev: CustomEvent) {
-    ev.stopPropagation();
-    if (!this._config) return;
-    const target = ev.target as HTMLElement & { configValue: keyof FermentationCardConfig; value: string };
-    const value = target.value || undefined;
-    this._fireConfigChanged({ ...this._config, [target.configValue]: value });
-  }
-
-  private _switchChanged(ev: Event) {
-    if (!this._config) return;
-    const target = ev.target as HTMLInputElement & { configValue: keyof FermentationCardConfig; checked: boolean };
-    this._fireConfigChanged({ ...this._config, [target.configValue]: target.checked });
-  }
-
-  private _entityPickerChanged(ev: CustomEvent) {
-    ev.stopPropagation();
-    if (!this._config) return;
-    const target = ev.target as HTMLElement & { configValue: keyof FermentationCardConfig };
-    const value = (ev.detail.value as string) || undefined;
-    this._fireConfigChanged({ ...this._config, [target.configValue]: value });
-  }
-
-  private _fireConfigChanged(config: FermentationCardConfig) {
-    this._config = config;
+    this._config = newConfig;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
-        detail: { config },
+        detail: { config: newConfig },
         bubbles: true,
         composed: true,
       })
