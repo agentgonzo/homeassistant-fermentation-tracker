@@ -92,13 +92,12 @@ export class FermentationCardEditor extends LitElement {
     if (!helpers) return;
     try {
       const card = helpers.createCardElement({
-        type: "entities",
-        entities: [],
+        type: "markdown",
+        content: "",
       } as { type: string });
       await card.constructor.getConfigElement?.();
     } catch {
-      // Ignore — registration of picker elements happens as a side effect
-      // of loading the editor module, even if setConfig errors.
+      // ignore
     }
   }
 
