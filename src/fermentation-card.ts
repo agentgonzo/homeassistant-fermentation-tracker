@@ -381,16 +381,26 @@ export class FermentationTrackerCard extends LitElement {
   }
 
   private async _detectAutoRangeHours(): Promise<number> {
+    const log = (msg: string, ...args: unknown[]) =>
+      console.log(`[fermentation-tracker][auto-range] ${msg}`, ...args);
+
     if (!this.hass || !this._gravityEntityId) {
+      log("no hass or gravity entity, using fallback");
       return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
     }
     const lookbackMs =
       FermentationTrackerCard.AUTO_DETECT_LOOKBACK_HOURS * 60 * 60 * 1000;
     const start = new Date(Date.now() - lookbackMs);
     const end = new Date();
+
+    log(`fetching gravity history for ${this._gravityEntityId}`, {
+      start: start.toISOString(),
+      end: end.toISOString(),
+    });
+
     try {
       const result = await this.hass.callWS<
-        Record<string, Array<{ s: string; lu?: number }>>
+        Record<string, Array<{ s: string; lu?: number; lc?: number }>>
       >({
         type: "history/history_during_period",
         start_time: start.toISOString(),
@@ -400,57 +410,143 @@ export class FermentationTrackerCard extends LitElement {
         no_attributes: true,
       });
       const states = result[this._gravityEntityId] ?? [];
+      log(`raw states received: ${states.length}`);
+      if (states.length > 0) {
+        log("first 3 raw states:", states.slice(0, 3));
+        log("last 3 raw states:", states.slice(-3));
+      }
+
       if (states.length < 2) {
+        log("insufficient states, using fallback");
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
+
       // Build a list of plausible-range readings.
       const plausible: { t: number; v: number }[] = [];
+      const rejected: Array<{
+        reason: string;
+        t?: string;
+        v?: number;
+        raw: unknown;
+      }> = [];
       for (const s of states) {
-        const tRaw = typeof s.lu === "number" ? s.lu : 0;
-        if (tRaw <= 0) continue;
+        const tRaw =
+          typeof s.lu === "number"
+            ? s.lu
+            : typeof s.lc === "number"
+              ? s.lc
+              : 0;
+        if (tRaw <= 0) {
+          rejected.push({ reason: "no timestamp", raw: s });
+          continue;
+        }
         const t = tRaw < 1e12 ? tRaw * 1000 : tRaw;
         const v = parseFloat(s.s);
-        if (isNaN(v)) continue;
+        if (isNaN(v)) {
+          rejected.push({
+            reason: "NaN value",
+            t: new Date(t).toISOString(),
+            raw: s,
+          });
+          continue;
+        }
         if (
           v < FermentationTrackerCard.MIN_PLAUSIBLE_SG ||
           v > FermentationTrackerCard.MAX_PLAUSIBLE_SG
         ) {
+          rejected.push({
+            reason: "out of range",
+            t: new Date(t).toISOString(),
+            v,
+            raw: s,
+          });
           continue;
         }
         plausible.push({ t, v });
       }
+      log(
+        `plausible readings (${plausible.length}) after range filter [${FermentationTrackerCard.MIN_PLAUSIBLE_SG}, ${FermentationTrackerCard.MAX_PLAUSIBLE_SG}], rejected ${rejected.length}`
+      );
+      if (rejected.length > 0) {
+        log("rejected sample (up to 10):", rejected.slice(0, 10));
+      }
+      if (plausible.length > 0) {
+        const fmt = (p: { t: number; v: number }) =>
+          `${new Date(p.t).toISOString()} = ${p.v}`;
+        log("first 5 plausible:", plausible.slice(0, 5).map(fmt));
+        log("last 5 plausible:", plausible.slice(-5).map(fmt));
+      }
+
       if (plausible.length < 2) {
+        log("insufficient plausible readings, using fallback");
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
 
-      // Drop isolated noise readings that have no nearby neighbour at a
-      // similar value. This catches one-off readings that briefly fall into
-      // the plausible band while the iSpindel is being moved/handled.
+      // Drop isolated noise readings.
       const points = this._filterIsolated(plausible);
-      if (points.length < 2) {
+      const dropped = plausible.length - points.length;
+      log(
+        `isolation filter dropped ${dropped} readings; ${points.length} supported readings remain`
+      );
+      if (dropped > 0) {
+        const supportedSet = new Set(points.map((p) => p.t));
+        const droppedSamples = plausible
+          .filter((p) => !supportedSet.has(p.t))
+          .slice(0, 10)
+          .map((p) => `${new Date(p.t).toISOString()} = ${p.v}`);
+        log("dropped as isolated (up to 10):", droppedSamples);
+      }
+
+      let workingPoints = points;
+      if (workingPoints.length < 2) {
         console.warn(
           "[fermentation-tracker] all plausible readings filtered as isolated; falling back to plausible set"
         );
-        // If filtering was over-aggressive, fall back to the unfiltered set
-        points.push(...plausible);
+        workingPoints = plausible;
       }
 
       const gapMs =
         FermentationTrackerCard.AUTO_DETECT_GAP_HOURS * 60 * 60 * 1000;
       let rawStartIdx = 0;
-      for (let i = points.length - 1; i > 0; i--) {
-        if (points[i].t - points[i - 1].t > gapMs) {
+      let detectedGap: { from: string; to: string; hours: number } | undefined;
+      for (let i = workingPoints.length - 1; i > 0; i--) {
+        const gap = workingPoints[i].t - workingPoints[i - 1].t;
+        if (gap > gapMs) {
           rawStartIdx = i;
+          detectedGap = {
+            from: new Date(workingPoints[i - 1].t).toISOString(),
+            to: new Date(workingPoints[i].t).toISOString(),
+            hours: gap / 3600000,
+          };
           break;
         }
       }
 
-      const stableStartMs = this._findStableStart(points, rawStartIdx);
-      const hoursSince = (Date.now() - stableStartMs) / 3600000;
-
-      console.debug(
-        `[fermentation-tracker] auto range: ${plausible.length} plausible / ${points.length} supported readings, fermentation start ${new Date(stableStartMs).toISOString()} (${hoursSince.toFixed(1)}h ago)`
+      if (detectedGap) {
+        log(
+          `gap detected: ${detectedGap.hours.toFixed(1)}h between ${detectedGap.from} and ${detectedGap.to}`
+        );
+      } else {
+        log(
+          `no gap >= ${FermentationTrackerCard.AUTO_DETECT_GAP_HOURS}h found; starting from earliest supported reading`
+        );
+      }
+      log(
+        `raw start (after gap detection): ${new Date(workingPoints[rawStartIdx].t).toISOString()} = ${workingPoints[rawStartIdx].v}`
       );
+
+      const stableStartMs = this._findStableStart(workingPoints, rawStartIdx);
+      log(
+        `stable start (after settling filter): ${new Date(stableStartMs).toISOString()}`
+      );
+      if (stableStartMs !== workingPoints[rawStartIdx].t) {
+        log(
+          `settling filter advanced start by ${((stableStartMs - workingPoints[rawStartIdx].t) / 60000).toFixed(0)} minutes`
+        );
+      }
+
+      const hoursSince = (Date.now() - stableStartMs) / 3600000;
+      log(`final fermentation start: ${hoursSince.toFixed(1)}h ago`);
 
       return Math.max(1, Math.ceil(hoursSince));
     } catch (e) {
