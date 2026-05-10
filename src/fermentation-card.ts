@@ -472,10 +472,16 @@ export class FermentationTrackerCard extends LitElement {
         plausible.push({ t, v });
       }
       log(
-        `plausible readings (${plausible.length}) after range filter [${FermentationTrackerCard.MIN_PLAUSIBLE_SG}, ${FermentationTrackerCard.MAX_PLAUSIBLE_SG}], rejected ${rejected.length}`
+        `plausible readings (${plausible.length}) after range filter [${FermentationTrackerCard.MIN_PLAUSIBLE_SG}, ${FermentationTrackerCard.MAX_PLAUSIBLE_SG}], rejected ${rejected.length}, junk timestamps ${junkTimes.length}`
       );
+      // Dump ALL rejected readings as readable strings so we can audit
       if (rejected.length > 0) {
-        log("rejected sample (up to 10):", rejected.slice(0, 10));
+        const summary = rejected.map((r) => {
+          const tStr = r.t ?? "(no time)";
+          const vStr = r.v !== undefined ? r.v : "(no value)";
+          return `${tStr} = ${vStr} [${r.reason}]`;
+        });
+        log(`all ${rejected.length} rejected readings:`, summary);
       }
       if (plausible.length > 0) {
         const fmt = (p: { t: number; v: number }) =>
@@ -572,9 +578,35 @@ export class FermentationTrackerCard extends LitElement {
           `no gap >= ${FermentationTrackerCard.AUTO_DETECT_GAP_HOURS}h found; starting from earliest supported reading`
         );
       }
+      const startMs = workingPoints[rawStartIdx].t;
       log(
-        `raw start (after gap detection): ${new Date(workingPoints[rawStartIdx].t).toISOString()} = ${workingPoints[rawStartIdx].v}`
+        `raw start (after gap detection): ${new Date(startMs).toISOString()} = ${workingPoints[rawStartIdx].v}`
       );
+
+      // Dump the raw context around the chosen start: ±2 hours of EVERY raw
+      // reading (plausible or rejected) so we can see what's actually there.
+      const ctxWindowMs = 2 * 60 * 60 * 1000;
+      const ctxRows: string[] = [];
+      for (const s of states) {
+        const tRaw =
+          typeof s.lu === "number"
+            ? s.lu
+            : typeof s.lc === "number"
+              ? s.lc
+              : 0;
+        if (tRaw <= 0) continue;
+        const t = tRaw < 1e12 ? tRaw * 1000 : tRaw;
+        if (Math.abs(t - startMs) > ctxWindowMs) continue;
+        const v = parseFloat(s.s);
+        const inRange =
+          !isNaN(v) &&
+          v >= FermentationTrackerCard.MIN_PLAUSIBLE_SG &&
+          v <= FermentationTrackerCard.MAX_PLAUSIBLE_SG;
+        ctxRows.push(
+          `${new Date(t).toISOString()} = ${s.s} ${inRange ? "[plausible]" : "[junk]"}`
+        );
+      }
+      log(`raw readings within ±2h of chosen start (${ctxRows.length}):`, ctxRows);
 
       const stableStartMs = this._findStableStart(workingPoints, rawStartIdx);
       log(
