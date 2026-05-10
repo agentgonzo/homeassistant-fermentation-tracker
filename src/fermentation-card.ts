@@ -64,6 +64,10 @@ export class FermentationTrackerCard extends LitElement {
   // brief in-range readings while the iSpindel is being moved/handled.
   private static readonly SUPPORT_WINDOW_HOURS = 4;
   private static readonly SUPPORT_TOLERANCE_SG = 0.02;
+  // A plausible reading is dropped if there's an out-of-range "junk" reading
+  // within ±this many minutes — a strong signal that the iSpindel was being
+  // moved or settling, even though one stray reading happened to land in range.
+  private static readonly JUNK_PROXIMITY_MINUTES = 30;
 
   static styles = css`
     ha-card {
@@ -421,8 +425,10 @@ export class FermentationTrackerCard extends LitElement {
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
 
-      // Build a list of plausible-range readings.
+      // Build a list of plausible-range readings, plus a separate list of
+      // junk timestamps (out-of-range readings that mark iSpindel disturbance).
       const plausible: { t: number; v: number }[] = [];
+      const junkTimes: number[] = [];
       const rejected: Array<{
         reason: string;
         t?: string;
@@ -460,6 +466,7 @@ export class FermentationTrackerCard extends LitElement {
             v,
             raw: s,
           });
+          junkTimes.push(t);
           continue;
         }
         plausible.push({ t, v });
@@ -482,15 +489,49 @@ export class FermentationTrackerCard extends LitElement {
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
 
-      // Drop isolated noise readings.
-      const points = this._filterIsolated(plausible);
-      const dropped = plausible.length - points.length;
+      // Drop plausible readings that have a junk reading within ±30min.
+      // Strong signal the iSpindel is being moved (e.g. SG 1.099 immediately
+      // followed 3 minutes later by SG 1.253 = clearly being handled).
+      const proxMs =
+        FermentationTrackerCard.JUNK_PROXIMITY_MINUTES * 60 * 1000;
+      const sortedJunk = [...junkTimes].sort((a, b) => a - b);
+      const cleanFromJunk = plausible.filter((p) => {
+        // Binary search for the closest junk time
+        let lo = 0;
+        let hi = sortedJunk.length - 1;
+        let closest = Infinity;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const diff = sortedJunk[mid] - p.t;
+          if (Math.abs(diff) < closest) closest = Math.abs(diff);
+          if (diff < 0) lo = mid + 1;
+          else if (diff > 0) hi = mid - 1;
+          else return false;
+        }
+        return closest > proxMs;
+      });
+      const junkProxDropped = plausible.length - cleanFromJunk.length;
       log(
-        `isolation filter dropped ${dropped} readings; ${points.length} supported readings remain`
+        `junk-proximity filter dropped ${junkProxDropped} readings (had a junk reading within ${FermentationTrackerCard.JUNK_PROXIMITY_MINUTES}min); ${cleanFromJunk.length} clean readings remain`
       );
-      if (dropped > 0) {
-        const supportedSet = new Set(points.map((p) => p.t));
+      if (junkProxDropped > 0) {
+        const cleanSet = new Set(cleanFromJunk.map((p) => p.t));
         const droppedSamples = plausible
+          .filter((p) => !cleanSet.has(p.t))
+          .slice(0, 10)
+          .map((p) => `${new Date(p.t).toISOString()} = ${p.v}`);
+        log("dropped as near junk (up to 10):", droppedSamples);
+      }
+
+      // Then drop isolated readings.
+      const points = this._filterIsolated(cleanFromJunk);
+      const isolatedDropped = cleanFromJunk.length - points.length;
+      log(
+        `isolation filter dropped ${isolatedDropped} readings; ${points.length} supported readings remain`
+      );
+      if (isolatedDropped > 0) {
+        const supportedSet = new Set(points.map((p) => p.t));
+        const droppedSamples = cleanFromJunk
           .filter((p) => !supportedSet.has(p.t))
           .slice(0, 10)
           .map((p) => `${new Date(p.t).toISOString()} = ${p.v}`);
@@ -500,7 +541,7 @@ export class FermentationTrackerCard extends LitElement {
       let workingPoints = points;
       if (workingPoints.length < 2) {
         console.warn(
-          "[fermentation-tracker] all plausible readings filtered as isolated; falling back to plausible set"
+          "[fermentation-tracker] all plausible readings filtered out; falling back to plausible set"
         );
         workingPoints = plausible;
       }
