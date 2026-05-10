@@ -53,6 +53,11 @@ export class FermentationTrackerCard extends LitElement {
   private static readonly STABILITY_WINDOW_SIZE = 3;
   // Cap on how far past the raw start we'll look for stability before giving up
   private static readonly STABILITY_MAX_OFFSET_HOURS = 4;
+  // Plausible SG range for wort/beer/wine. Readings outside this band are
+  // treated as garbage (iSpindel sitting upright, stuck on the side, etc.) and
+  // are excluded from gap and stability detection.
+  private static readonly MIN_PLAUSIBLE_SG = 0.99;
+  private static readonly MAX_PLAUSIBLE_SG = 1.2;
 
   static styles = css`
     ha-card {
@@ -357,7 +362,9 @@ export class FermentationTrackerCard extends LitElement {
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
       // Build parallel arrays of timestamp (ms) and SG value, ignoring entries
-      // we can't parse.
+      // we can't parse OR that fall outside the plausible SG range. Readings
+      // outside the band (the iSpindel sitting on its side, stored upright,
+      // etc.) shouldn't contribute to either gap or stability detection.
       const points: { t: number; v: number }[] = [];
       for (const s of states) {
         const tRaw = typeof s.lu === "number" ? s.lu : 0;
@@ -365,6 +372,12 @@ export class FermentationTrackerCard extends LitElement {
         const t = tRaw < 1e12 ? tRaw * 1000 : tRaw;
         const v = parseFloat(s.s);
         if (isNaN(v)) continue;
+        if (
+          v < FermentationTrackerCard.MIN_PLAUSIBLE_SG ||
+          v > FermentationTrackerCard.MAX_PLAUSIBLE_SG
+        ) {
+          continue;
+        }
         points.push({ t, v });
       }
       if (points.length < 2) {
@@ -373,7 +386,9 @@ export class FermentationTrackerCard extends LitElement {
 
       const gapMs =
         FermentationTrackerCard.AUTO_DETECT_GAP_HOURS * 60 * 60 * 1000;
-      // Find the index of the first reading AFTER the most recent 6h+ gap.
+      // Find the index of the first plausible reading AFTER the most recent
+      // 6h+ gap (in *plausible* readings — gaps in the raw data caused by
+      // out-of-range values count too).
       let rawStartIdx = 0;
       for (let i = points.length - 1; i > 0; i--) {
         if (points[i].t - points[i - 1].t > gapMs) {
