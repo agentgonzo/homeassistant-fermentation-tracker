@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "strict": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "declaration": false,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
