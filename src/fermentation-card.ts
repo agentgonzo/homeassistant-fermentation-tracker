@@ -58,6 +58,12 @@ export class FermentationTrackerCard extends LitElement {
   // are excluded from gap and stability detection.
   private static readonly MIN_PLAUSIBLE_SG = 0.99;
   private static readonly MAX_PLAUSIBLE_SG = 1.2;
+  // A reading needs at least one *supporting* neighbour within ±SUPPORT_WINDOW_HOURS
+  // whose SG is within ±SUPPORT_TOLERANCE_SG. Without one it's treated as an
+  // isolated noise reading and excluded from gap detection. This filters out
+  // brief in-range readings while the iSpindel is being moved/handled.
+  private static readonly SUPPORT_WINDOW_HOURS = 4;
+  private static readonly SUPPORT_TOLERANCE_SG = 0.02;
 
   static styles = css`
     ha-card {
@@ -304,6 +310,42 @@ export class FermentationTrackerCard extends LitElement {
     }
   }
 
+  // Returns only those points that have at least one neighbour within
+  // ±SUPPORT_WINDOW_HOURS whose value is within ±SUPPORT_TOLERANCE_SG.
+  // Points are assumed sorted ascending by timestamp.
+  private _filterIsolated(
+    points: { t: number; v: number }[]
+  ): { t: number; v: number }[] {
+    const winMs =
+      FermentationTrackerCard.SUPPORT_WINDOW_HOURS * 60 * 60 * 1000;
+    const tol = FermentationTrackerCard.SUPPORT_TOLERANCE_SG;
+    const supported: { t: number; v: number }[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      let hasNeighbour = false;
+      // Look forward
+      for (let j = i + 1; j < points.length; j++) {
+        if (points[j].t - p.t > winMs) break;
+        if (Math.abs(points[j].v - p.v) <= tol) {
+          hasNeighbour = true;
+          break;
+        }
+      }
+      if (!hasNeighbour) {
+        // Look backward
+        for (let j = i - 1; j >= 0; j--) {
+          if (p.t - points[j].t > winMs) break;
+          if (Math.abs(points[j].v - p.v) <= tol) {
+            hasNeighbour = true;
+            break;
+          }
+        }
+      }
+      if (hasNeighbour) supported.push(p);
+    }
+    return supported;
+  }
+
   // Walks forward from rawStartIdx looking for the first window of
   // STABILITY_WINDOW_SIZE consecutive readings whose values are all within
   // STABILITY_TOLERANCE_SG of each other — that's where the iSpindel has
@@ -361,11 +403,8 @@ export class FermentationTrackerCard extends LitElement {
       if (states.length < 2) {
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
-      // Build parallel arrays of timestamp (ms) and SG value, ignoring entries
-      // we can't parse OR that fall outside the plausible SG range. Readings
-      // outside the band (the iSpindel sitting on its side, stored upright,
-      // etc.) shouldn't contribute to either gap or stability detection.
-      const points: { t: number; v: number }[] = [];
+      // Build a list of plausible-range readings.
+      const plausible: { t: number; v: number }[] = [];
       for (const s of states) {
         const tRaw = typeof s.lu === "number" ? s.lu : 0;
         if (tRaw <= 0) continue;
@@ -378,17 +417,26 @@ export class FermentationTrackerCard extends LitElement {
         ) {
           continue;
         }
-        points.push({ t, v });
+        plausible.push({ t, v });
       }
-      if (points.length < 2) {
+      if (plausible.length < 2) {
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+      }
+
+      // Drop isolated noise readings that have no nearby neighbour at a
+      // similar value. This catches one-off readings that briefly fall into
+      // the plausible band while the iSpindel is being moved/handled.
+      const points = this._filterIsolated(plausible);
+      if (points.length < 2) {
+        console.warn(
+          "[fermentation-tracker] all plausible readings filtered as isolated; falling back to plausible set"
+        );
+        // If filtering was over-aggressive, fall back to the unfiltered set
+        points.push(...plausible);
       }
 
       const gapMs =
         FermentationTrackerCard.AUTO_DETECT_GAP_HOURS * 60 * 60 * 1000;
-      // Find the index of the first plausible reading AFTER the most recent
-      // 6h+ gap (in *plausible* readings — gaps in the raw data caused by
-      // out-of-range values count too).
       let rawStartIdx = 0;
       for (let i = points.length - 1; i > 0; i--) {
         if (points[i].t - points[i - 1].t > gapMs) {
@@ -399,6 +447,11 @@ export class FermentationTrackerCard extends LitElement {
 
       const stableStartMs = this._findStableStart(points, rawStartIdx);
       const hoursSince = (Date.now() - stableStartMs) / 3600000;
+
+      console.debug(
+        `[fermentation-tracker] auto range: ${plausible.length} plausible / ${points.length} supported readings, fermentation start ${new Date(stableStartMs).toISOString()} (${hoursSince.toFixed(1)}h ago)`
+      );
+
       return Math.max(1, Math.ceil(hoursSince));
     } catch (e) {
       console.error("[fermentation-tracker] auto range detection failed", e);
