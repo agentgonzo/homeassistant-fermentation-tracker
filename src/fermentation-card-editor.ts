@@ -22,6 +22,8 @@ const computeLabel = (schema: { name: string }): string => {
       return "Original Gravity (SG)";
     case "show_graph":
       return "Show trend graph";
+    case "show_delta_24h":
+      return "Show 24h change indicators";
     case "chart_type":
       return "Chart style";
     case "gravity_entity":
@@ -103,6 +105,7 @@ export class FermentationCardEditor extends LitElement {
           },
         },
         { name: "show_graph", selector: { boolean: {} } },
+        { name: "show_delta_24h", selector: { boolean: {} } },
         {
           name: "chart_type",
           selector: {

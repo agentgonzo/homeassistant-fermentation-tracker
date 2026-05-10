@@ -186,7 +186,7 @@ export class FermentationTrackerCard extends LitElement {
     }
 
     // Refetch 24h-ago values when the tracked entity set changes
-    if (this._gravityEntityId) {
+    if (this._gravityEntityId && this._config?.show_delta_24h !== false) {
       const histKey = [this._gravityEntityId, ...this._tempEntityIds].join("|");
       if (histKey !== this._historicalKey) {
         this._historicalKey = histKey;
@@ -214,6 +214,7 @@ export class FermentationTrackerCard extends LitElement {
 
   private async _fetchHistoricalValues(): Promise<void> {
     if (!this.hass || !this._gravityEntityId) return;
+    if (this._config?.show_delta_24h === false) return;
     const entityIds = [this._gravityEntityId, ...this._tempEntityIds];
     const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const end = new Date(start.getTime() + 60 * 60 * 1000);
@@ -478,10 +479,13 @@ export class FermentationTrackerCard extends LitElement {
     direction: "up-good" | "down-good" | "neutral",
     suffix = ""
   ) {
+    if (this._config?.show_delta_24h === false) return nothing;
     if (delta === undefined || isNaN(delta)) return nothing;
 
+    const tooltip = "Change in the last 24 hours";
+
     if (delta === 0) {
-      return html`<span class="delta">±0${suffix}</span>`;
+      return html`<span class="delta" title=${tooltip}>±0${suffix}</span>`;
     }
 
     const up = delta > 0;
@@ -492,7 +496,7 @@ export class FermentationTrackerCard extends LitElement {
     if (direction === "up-good") cls += up ? " good" : " bad";
     else if (direction === "down-good") cls += up ? " bad" : " good";
 
-    return html`<span class="${cls}">
+    return html`<span class="${cls}" title=${tooltip}>
       ${arrow} ${sign}${Math.abs(delta).toFixed(decimals)}${suffix}
     </span>`;
   }
