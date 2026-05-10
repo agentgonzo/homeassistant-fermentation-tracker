@@ -21,7 +21,9 @@ const computeLabel = (schema: { name: string }): string => {
     case "original_gravity":
       return "Original Gravity (SG)";
     case "show_graph":
-      return "Show gravity trend graph";
+      return "Show trend graph";
+    case "chart_type":
+      return "Chart style";
     case "gravity_entity":
       return "Gravity entity (auto-detected if blank)";
     case "temperature_entity":
@@ -88,6 +90,18 @@ export class FermentationCardEditor extends LitElement {
           },
         },
         { name: "show_graph", selector: { boolean: {} } },
+        {
+          name: "chart_type",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                { value: "default", label: "Default (HA history graph)" },
+                { value: "apex", label: "ApexCharts (dual axis, requires apexcharts-card)" },
+              ],
+            },
+          },
+        },
         {
           name: "gravity_entity",
           selector: {

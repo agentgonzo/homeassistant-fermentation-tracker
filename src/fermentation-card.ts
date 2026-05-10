@@ -90,6 +90,16 @@ export class FermentationTrackerCard extends LitElement {
       --ha-card-box-shadow: none;
       --ha-card-border-width: 0;
     }
+    .graph-missing {
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--secondary-background-color);
+      color: var(--secondary-text-color);
+      font-size: 0.85em;
+    }
+    .graph-missing a {
+      color: var(--primary-color);
+    }
     .unconfigured {
       display: flex;
       flex-direction: column;
@@ -146,19 +156,21 @@ export class FermentationTrackerCard extends LitElement {
       this._historyCard.hass = this.hass;
     }
 
-    // (Re)create the history card when the tracked entities change
+    // (Re)create the history card when the tracked entities or chart type change
     if (this._config?.show_graph !== false && this._gravityEntityId) {
+      const chartType = this._config?.chart_type ?? "default";
       const entities = [this._gravityEntityId, this._tempEntityId].filter(
         (e): e is string => !!e
       );
-      const key = entities.join("|");
+      const key = `${chartType}::${entities.join("|")}`;
       if (key !== this._historyCardKey) {
-        this._createHistoryCard(entities, key);
+        this._createHistoryCard(chartType, entities, key);
       }
     }
   }
 
   private async _createHistoryCard(
+    chartType: "default" | "apex",
     entities: string[],
     key: string
   ): Promise<void> {
@@ -173,13 +185,57 @@ export class FermentationTrackerCard extends LitElement {
       }
     ).loadCardHelpers?.();
     if (!helpers) return;
-    const card = helpers.createCardElement({
-      type: "history-graph",
-      entities,
-      hours_to_show: 72,
-    });
+
+    const config =
+      chartType === "apex"
+        ? this._buildApexConfig(entities)
+        : { type: "history-graph", entities, hours_to_show: 72 };
+
+    const card = helpers.createCardElement(config);
     card.hass = this.hass;
     this._historyCard = card;
+  }
+
+  private _buildApexConfig(entities: string[]): Record<string, unknown> {
+    const [gravityEntity, tempEntity] = entities;
+    const series: Record<string, unknown>[] = [];
+    const yaxis: Record<string, unknown>[] = [];
+
+    if (gravityEntity) {
+      series.push({
+        entity: gravityEntity,
+        name: "Gravity",
+        yaxis_id: "gravity",
+        stroke_width: 2,
+      });
+      yaxis.push({
+        id: "gravity",
+        decimals: 4,
+        apex_config: { tickAmount: 4 },
+      });
+    }
+    if (tempEntity) {
+      series.push({
+        entity: tempEntity,
+        name: "Temperature",
+        yaxis_id: "temperature",
+        stroke_width: 2,
+      });
+      yaxis.push({
+        id: "temperature",
+        decimals: 1,
+        opposite: true,
+        apex_config: { tickAmount: 4 },
+      });
+    }
+
+    return {
+      type: "custom:apexcharts-card",
+      graph_span: "72h",
+      header: { show: false },
+      yaxis,
+      series,
+    };
   }
 
   protected render() {
@@ -268,8 +324,22 @@ export class FermentationTrackerCard extends LitElement {
               `
             : nothing}
 
-          ${this._config.show_graph !== false && this._historyCard
-            ? html`<div class="graph-wrapper">${this._historyCard}</div>`
+          ${this._config.show_graph !== false
+            ? this._config.chart_type === "apex" &&
+              !customElements.get("apexcharts-card")
+              ? html`<div class="graph-missing">
+                  ApexCharts not installed. Install
+                  <a
+                    href="https://github.com/RomRider/apexcharts-card"
+                    target="_blank"
+                    rel="noopener"
+                    >apexcharts-card</a
+                  >
+                  via HACS or switch chart style back to default.
+                </div>`
+              : this._historyCard
+                ? html`<div class="graph-wrapper">${this._historyCard}</div>`
+                : nothing
             : nothing}
         </div>
       </ha-card>

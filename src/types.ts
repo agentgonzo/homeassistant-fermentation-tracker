@@ -40,6 +40,7 @@ export interface FermentationCardConfig {
   gravity_entity?: string;
   temperature_entity?: string;
   show_graph?: boolean;
+  chart_type?: "default" | "apex";
   gravity_unit?: "SG" | "Plato" | "Brix";
   original_gravity?: number;
 }
