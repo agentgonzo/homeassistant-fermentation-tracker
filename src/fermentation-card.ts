@@ -152,16 +152,22 @@ export class FermentationTrackerCard extends LitElement {
     .metric {
       background: var(--secondary-background-color);
       border-radius: 8px;
-      padding: 12px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 2px;
     }
     .metric-label {
       font-size: 0.75em;
       color: var(--secondary-text-color);
       text-transform: uppercase;
       letter-spacing: 0.05em;
+    }
+    .metric-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .metric-value {
       font-size: 1.4em;
@@ -180,13 +186,12 @@ export class FermentationTrackerCard extends LitElement {
     .metric-secondary {
       font-size: 0.85em;
       color: var(--secondary-text-color);
-      margin-top: 2px;
     }
     .delta {
       font-size: 0.75em;
-      margin-top: 2px;
       letter-spacing: 0.02em;
       color: var(--primary-text-color);
+      white-space: nowrap;
     }
     .delta.bad {
       color: var(--error-color, #f44336);
@@ -981,22 +986,26 @@ export class FermentationTrackerCard extends LitElement {
           <div class="primary-metrics">
             <div class="metric gravity">
               <span class="metric-label">Gravity</span>
-              <span class="metric-value">
-                ${gravityRaw !== undefined && !isNaN(gravityRaw) ? gravityRaw.toFixed(4) : "—"}
-              </span>
-              ${this._renderDelta(gravityDelta, 4, "down-good")}
+              <div class="metric-row">
+                <span class="metric-value">
+                  ${gravityRaw !== undefined && !isNaN(gravityRaw) ? gravityRaw.toFixed(4) : "—"}
+                </span>
+                ${this._renderDelta(gravityDelta, 4, "down-good")}
+              </div>
               ${gravitySecondary !== undefined
                 ? html`<span class="metric-secondary">${gravitySecondary}</span>`
                 : nothing}
             </div>
             <div class="metric temperature">
               <span class="metric-label">Temperature</span>
-              <span class="metric-value">
-                ${primaryTemp
-                  ? `${primaryTemp.value.toFixed(1)} ${primaryTemp.uom}`
-                  : "—"}
-              </span>
-              ${this._renderDelta(tempDelta, 1, "neutral")}
+              <div class="metric-row">
+                <span class="metric-value">
+                  ${primaryTemp
+                    ? `${primaryTemp.value.toFixed(1)} ${primaryTemp.uom}`
+                    : "—"}
+                </span>
+                ${this._renderDelta(tempDelta, 1, "neutral")}
+              </div>
             </div>
           </div>
 
@@ -1009,17 +1018,21 @@ export class FermentationTrackerCard extends LitElement {
                   </div>
                   <div class="metric">
                     <span class="metric-label">Attenuation</span>
-                    <span class="metric-value">
-                      ${attenuation !== undefined ? `${attenuation.toFixed(1)}%` : "—"}
-                    </span>
-                    ${this._renderDelta(attenuationDelta, 1, "up-good", "%")}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${attenuation !== undefined ? `${attenuation.toFixed(1)}%` : "—"}
+                      </span>
+                      ${this._renderDelta(attenuationDelta, 1, "up-good", "%")}
+                    </div>
                   </div>
                   <div class="metric abv">
                     <span class="metric-label">ABV</span>
-                    <span class="metric-value">
-                      ${abv !== undefined ? `${abv.toFixed(2)}%` : "—"}
-                    </span>
-                    ${this._renderDelta(abvDelta, 2, "up-good", "%")}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${abv !== undefined ? `${abv.toFixed(2)}%` : "—"}
+                      </span>
+                      ${this._renderDelta(abvDelta, 2, "up-good", "%")}
+                    </div>
                   </div>
                 </div>
               `
@@ -1030,21 +1043,25 @@ export class FermentationTrackerCard extends LitElement {
                 <div class="secondary-metrics">
                   <div class="metric">
                     <span class="metric-label">Signal</span>
-                    <span class="metric-value">
-                      ${signalValue !== undefined && !isNaN(signalValue)
-                        ? `${signalValue.toFixed(0)} ${signalUom}`
-                        : "—"}
-                    </span>
-                    ${this._renderDelta(signalDelta, 0, "neutral", ` ${signalUom}`)}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${signalValue !== undefined && !isNaN(signalValue)
+                          ? `${signalValue.toFixed(0)} ${signalUom}`
+                          : "—"}
+                      </span>
+                      ${this._renderDelta(signalDelta, 0, "neutral", ` ${signalUom}`)}
+                    </div>
                   </div>
                   <div class="metric">
                     <span class="metric-label">Battery</span>
-                    <span class="metric-value">
-                      ${batteryValue !== undefined && !isNaN(batteryValue)
-                        ? `${batteryValue.toFixed(2)} ${batteryUom}`
-                        : "—"}
-                    </span>
-                    ${this._renderDelta(batteryDelta, 2, "neutral", ` ${batteryUom}`)}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${batteryValue !== undefined && !isNaN(batteryValue)
+                          ? `${batteryValue.toFixed(2)} ${batteryUom}`
+                          : "—"}
+                      </span>
+                      ${this._renderDelta(batteryDelta, 2, "neutral", ` ${batteryUom}`)}
+                    </div>
                   </div>
                 </div>
               `

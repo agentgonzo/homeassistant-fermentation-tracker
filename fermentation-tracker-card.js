@@ -68,16 +68,22 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
     .metric {
       background: var(--secondary-background-color);
       border-radius: 8px;
-      padding: 12px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 2px;
     }
     .metric-label {
       font-size: 0.75em;
       color: var(--secondary-text-color);
       text-transform: uppercase;
       letter-spacing: 0.05em;
+    }
+    .metric-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .metric-value {
       font-size: 1.4em;
@@ -96,13 +102,12 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
     .metric-secondary {
       font-size: 0.85em;
       color: var(--secondary-text-color);
-      margin-top: 2px;
     }
     .delta {
       font-size: 0.75em;
-      margin-top: 2px;
       letter-spacing: 0.02em;
       color: var(--primary-text-color);
+      white-space: nowrap;
     }
     .delta.bad {
       color: var(--error-color, #f44336);
@@ -174,18 +179,22 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
           <div class="primary-metrics">
             <div class="metric gravity">
               <span class="metric-label">Gravity</span>
-              <span class="metric-value">
-                ${void 0===e||isNaN(e)?"—":e.toFixed(4)}
-              </span>
-              ${this._renderDelta(l,4,"down-good")}
+              <div class="metric-row">
+                <span class="metric-value">
+                  ${void 0===e||isNaN(e)?"—":e.toFixed(4)}
+                </span>
+                ${this._renderDelta(l,4,"down-good")}
+              </div>
               ${void 0!==o?j`<span class="metric-secondary">${o}</span>`:K}
             </div>
             <div class="metric temperature">
               <span class="metric-label">Temperature</span>
-              <span class="metric-value">
-                ${v?`${v.value.toFixed(1)} ${v.uom}`:"—"}
-              </span>
-              ${this._renderDelta(O,1,"neutral")}
+              <div class="metric-row">
+                <span class="metric-value">
+                  ${v?`${v.value.toFixed(1)} ${v.uom}`:"—"}
+                </span>
+                ${this._renderDelta(O,1,"neutral")}
+              </div>
             </div>
           </div>
 
@@ -197,17 +206,21 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
                   </div>
                   <div class="metric">
                     <span class="metric-label">Attenuation</span>
-                    <span class="metric-value">
-                      ${void 0!==c?`${c.toFixed(1)}%`:"—"}
-                    </span>
-                    ${this._renderDelta(p,1,"up-good","%")}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${void 0!==c?`${c.toFixed(1)}%`:"—"}
+                      </span>
+                      ${this._renderDelta(p,1,"up-good","%")}
+                    </div>
                   </div>
                   <div class="metric abv">
                     <span class="metric-label">ABV</span>
-                    <span class="metric-value">
-                      ${void 0!==h?`${h.toFixed(2)}%`:"—"}
-                    </span>
-                    ${this._renderDelta(y,2,"up-good","%")}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${void 0!==h?`${h.toFixed(2)}%`:"—"}
+                      </span>
+                      ${this._renderDelta(y,2,"up-good","%")}
+                    </div>
                   </div>
                 </div>
               `:K}
@@ -216,17 +229,21 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
                 <div class="secondary-metrics">
                   <div class="metric">
                     <span class="metric-label">Signal</span>
-                    <span class="metric-value">
-                      ${void 0===m||isNaN(m)?"—":`${m.toFixed(0)} ${$}`}
-                    </span>
-                    ${this._renderDelta(E,0,"neutral",` ${$}`)}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${void 0===m||isNaN(m)?"—":`${m.toFixed(0)} ${$}`}
+                      </span>
+                      ${this._renderDelta(E,0,"neutral",` ${$}`)}
+                    </div>
                   </div>
                   <div class="metric">
                     <span class="metric-label">Battery</span>
-                    <span class="metric-value">
-                      ${void 0===S||isNaN(S)?"—":`${S.toFixed(2)} ${w}`}
-                    </span>
-                    ${this._renderDelta(x,2,"neutral",` ${w}`)}
+                    <div class="metric-row">
+                      <span class="metric-value">
+                        ${void 0===S||isNaN(S)?"—":`${S.toFixed(2)} ${w}`}
+                      </span>
+                      ${this._renderDelta(x,2,"neutral",` ${w}`)}
+                    </div>
                   </div>
                 </div>
               `:K}
