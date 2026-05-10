@@ -28,6 +28,8 @@ const computeLabel = (schema: { name: string }): string => {
       return "Show 24h change indicators";
     case "show_device_info":
       return "Show additional device information";
+    case "filter_settling":
+      return "Filter initial settling readings (iSpindel)";
     case "chart_type":
       return "Chart style";
     case "gravity_entity":
@@ -132,6 +134,7 @@ export class FermentationCardEditor extends LitElement {
         { name: "show_graph", selector: { boolean: {} } },
         { name: "show_delta_24h", selector: { boolean: {} } },
         { name: "show_device_info", selector: { boolean: {} } },
+        { name: "filter_settling", selector: { boolean: {} } },
         {
           name: "chart_type",
           selector: {

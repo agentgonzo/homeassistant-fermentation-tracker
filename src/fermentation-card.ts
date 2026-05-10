@@ -495,24 +495,28 @@ export class FermentationTrackerCard extends LitElement {
       // Drop plausible readings that have a junk reading within ±60 minutes.
       // The iSpindel can take up to an hour to settle after being moved, and
       // brief in-range readings during that period can look stable but are
-      // still drifting toward the true wort SG.
-      const proxMs =
-        FermentationTrackerCard.JUNK_PROXIMITY_MINUTES * 60 * 1000;
-      const sortedJunk = [...junkTimes].sort((a, b) => a - b);
-      const cleanFromJunk = plausible.filter((p) => {
-        let lo = 0;
-        let hi = sortedJunk.length - 1;
-        let closest = Infinity;
-        while (lo <= hi) {
-          const mid = (lo + hi) >> 1;
-          const diff = sortedJunk[mid] - p.t;
-          if (Math.abs(diff) < closest) closest = Math.abs(diff);
-          if (diff < 0) lo = mid + 1;
-          else if (diff > 0) hi = mid - 1;
-          else return false;
-        }
-        return closest > proxMs;
-      });
+      // still drifting toward the true wort SG. Only applied when the user
+      // has enabled filter_settling.
+      let cleanFromJunk = plausible;
+      if (this._config?.filter_settling && junkTimes.length > 0) {
+        const proxMs =
+          FermentationTrackerCard.JUNK_PROXIMITY_MINUTES * 60 * 1000;
+        const sortedJunk = [...junkTimes].sort((a, b) => a - b);
+        cleanFromJunk = plausible.filter((p) => {
+          let lo = 0;
+          let hi = sortedJunk.length - 1;
+          let closest = Infinity;
+          while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const diff = sortedJunk[mid] - p.t;
+            if (Math.abs(diff) < closest) closest = Math.abs(diff);
+            if (diff < 0) lo = mid + 1;
+            else if (diff > 0) hi = mid - 1;
+            else return false;
+          }
+          return closest > proxMs;
+        });
+      }
 
       // Drop readings with no nearby same-value neighbour — catches one-off
       // readings that briefly fall into the plausible band.

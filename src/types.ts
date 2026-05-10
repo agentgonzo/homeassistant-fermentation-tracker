@@ -48,4 +48,5 @@ export interface FermentationCardConfig {
   gravity_unit?: "SG" | "Plato" | "Brix";
   time_range?: "auto" | "1d" | "3d" | "7d" | "14d" | "30d" | "custom";
   time_range_custom_hours?: number;
+  filter_settling?: boolean;
 }
