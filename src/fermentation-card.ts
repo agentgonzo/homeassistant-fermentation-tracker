@@ -67,7 +67,10 @@ export class FermentationTrackerCard extends LitElement {
   // A plausible reading is dropped if there's an out-of-range "junk" reading
   // within ±this many minutes — a strong signal that the iSpindel was being
   // moved or settling, even though one stray reading happened to land in range.
-  private static readonly JUNK_PROXIMITY_MINUTES = 30;
+  // 60 min is empirically enough for an iSpindel to fully settle after being
+  // placed in wort (the brief in-range readings during the first hour can look
+  // stable but are still drifting toward the true wort SG).
+  private static readonly JUNK_PROXIMITY_MINUTES = 60;
 
   static styles = css`
     ha-card {
