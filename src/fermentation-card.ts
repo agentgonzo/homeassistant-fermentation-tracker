@@ -17,7 +17,7 @@ export class FermentationTrackerCard extends LitElement {
 
   @state() private _config?: FermentationCardConfig;
   @state() private _gravityEntityId?: string;
-  @state() private _tempEntityId?: string;
+  @state() private _tempEntityIds: string[] = [];
   @state() private _historyCard?: HTMLElement & { hass?: HomeAssistant };
   private _historyCardKey?: string;
 
@@ -133,7 +133,7 @@ export class FermentationTrackerCard extends LitElement {
     if (!config) throw new Error("Invalid configuration");
     this._config = config;
     this._gravityEntityId = config.gravity_entity;
-    this._tempEntityId = config.temperature_entity;
+    this._tempEntityIds = config.temperature_entity ?? [];
   }
 
   public getCardSize(): number {
@@ -146,8 +146,11 @@ export class FermentationTrackerCard extends LitElement {
       if (!this._config.gravity_entity) {
         this._gravityEntityId = findGravityEntity(this.hass, this._config.device_id);
       }
-      if (!this._config.temperature_entity) {
-        this._tempEntityId = findTemperatureEntity(this.hass, this._config.device_id);
+      if (!this._config.temperature_entity || this._config.temperature_entity.length === 0) {
+        const auto = findTemperatureEntity(this.hass, this._config.device_id);
+        this._tempEntityIds = auto ? [auto] : [];
+      } else {
+        this._tempEntityIds = this._config.temperature_entity;
       }
     }
 
@@ -159,9 +162,7 @@ export class FermentationTrackerCard extends LitElement {
     // (Re)create the history card when the tracked entities or chart type change
     if (this._config?.show_graph !== false && this._gravityEntityId) {
       const chartType = this._config?.chart_type ?? "default";
-      const entities = [this._gravityEntityId, this._tempEntityId].filter(
-        (e): e is string => !!e
-      );
+      const entities = [this._gravityEntityId, ...this._tempEntityIds];
       const key = `${chartType}::${entities.join("|")}`;
       if (key !== this._historyCardKey) {
         this._createHistoryCard(chartType, entities, key);
@@ -197,7 +198,7 @@ export class FermentationTrackerCard extends LitElement {
   }
 
   private _buildApexConfig(entities: string[]): Record<string, unknown> {
-    const [gravityEntity, tempEntity] = entities;
+    const [gravityEntity, ...tempEntities] = entities;
     const series: Record<string, unknown>[] = [];
     const yaxis: Record<string, unknown>[] = [];
 
@@ -214,12 +215,13 @@ export class FermentationTrackerCard extends LitElement {
         apex_config: { tickAmount: 4 },
       });
     }
-    if (tempEntity) {
-      series.push({
-        entity: tempEntity,
-        name: "Temperature",
-        yaxis_id: "temperature",
-        stroke_width: 2,
+    if (tempEntities.length > 0) {
+      tempEntities.forEach((entity) => {
+        series.push({
+          entity,
+          yaxis_id: "temperature",
+          stroke_width: 2,
+        });
       });
       yaxis.push({
         id: "temperature",
@@ -255,12 +257,8 @@ export class FermentationTrackerCard extends LitElement {
     const gravityState = this._gravityEntityId
       ? this.hass.states[this._gravityEntityId]
       : undefined;
-    const tempState = this._tempEntityId
-      ? this.hass.states[this._tempEntityId]
-      : undefined;
 
     const gravityRaw = gravityState ? parseFloat(gravityState.state) : undefined;
-    const tempRaw = tempState ? parseFloat(tempState.state) : undefined;
 
     const device = this.hass.devices[this._config.device_id];
     const deviceName = device?.name_by_user ?? device?.name ?? "Fermentation Vessel";
@@ -273,9 +271,30 @@ export class FermentationTrackerCard extends LitElement {
     const attenuation = og && gravityRaw ? calcAttenuation(og, gravityRaw) : undefined;
     const abv = og && gravityRaw ? calcAbv(og, gravityRaw) : undefined;
 
-    const tempUom = typeof tempState?.attributes["unit_of_measurement"] === "string"
-      ? tempState.attributes["unit_of_measurement"]
-      : "°C";
+    const temperatureReadings = this._tempEntityIds
+      .map((id) => {
+        const state = this.hass.states[id];
+        if (!state) return null;
+        const value = parseFloat(state.state);
+        if (isNaN(value)) return null;
+        const uom =
+          typeof state.attributes["unit_of_measurement"] === "string"
+            ? state.attributes["unit_of_measurement"]
+            : "°C";
+        const name =
+          this.hass.entities[id]?.entity_id === id
+            ? state.attributes["friendly_name"]
+            : undefined;
+        return {
+          id,
+          name: typeof name === "string" ? name : id,
+          value,
+          uom,
+        };
+      })
+      .filter((r): r is { id: string; name: string; value: number; uom: string } => r !== null);
+    const primaryTemp = temperatureReadings[0];
+    const additionalTemps = temperatureReadings.slice(1);
 
     return html`
       <ha-card>
@@ -296,8 +315,17 @@ export class FermentationTrackerCard extends LitElement {
             <div class="metric temperature">
               <span class="metric-label">Temperature</span>
               <span class="metric-value">
-                ${tempRaw !== undefined ? `${tempRaw.toFixed(1)} ${tempUom}` : "—"}
+                ${primaryTemp
+                  ? `${primaryTemp.value.toFixed(1)} ${primaryTemp.uom}`
+                  : "—"}
               </span>
+              ${additionalTemps.map(
+                (t) => html`
+                  <span class="metric-secondary"
+                    >${t.name}: ${t.value.toFixed(1)} ${t.uom}</span
+                  >
+                `
+              )}
             </div>
           </div>
 

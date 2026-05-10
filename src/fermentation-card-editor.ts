@@ -27,7 +27,7 @@ const computeLabel = (schema: { name: string }): string => {
     case "gravity_entity":
       return "Gravity entity (auto-detected if blank)";
     case "temperature_entity":
-      return "Temperature entity (auto-detected if blank)";
+      return "Temperature entities (auto-detected if blank)";
     default:
       return schema.name;
   }
@@ -50,6 +50,19 @@ export class FermentationCardEditor extends LitElement {
 
   public setConfig(config: FermentationCardConfig): void {
     this._config = config;
+  }
+
+  private _measurementSensorsForDevice(deviceId: string): string[] {
+    return Object.values(this.hass.entities)
+      .filter(
+        (e) =>
+          e.device_id === deviceId &&
+          e.entity_id.startsWith("sensor.") &&
+          !e.hidden &&
+          this.hass.states[e.entity_id]?.attributes["state_class"] ===
+            "measurement"
+      )
+      .map((e) => e.entity_id);
   }
 
   private _buildSchema(deviceId: string | undefined): HaFormSchema {
@@ -106,8 +119,7 @@ export class FermentationCardEditor extends LitElement {
           name: "gravity_entity",
           selector: {
             entity: {
-              domain: "sensor",
-              filter: { device_id: deviceId },
+              include_entities: this._measurementSensorsForDevice(deviceId),
             },
           },
         },
@@ -115,8 +127,8 @@ export class FermentationCardEditor extends LitElement {
           name: "temperature_entity",
           selector: {
             entity: {
-              domain: "sensor",
-              filter: { device_id: deviceId },
+              multiple: true,
+              filter: { device_class: "temperature" },
             },
           },
         }
