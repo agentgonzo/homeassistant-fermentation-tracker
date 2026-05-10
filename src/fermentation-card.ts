@@ -239,8 +239,8 @@ export class FermentationTrackerCard extends LitElement {
         }
       }
       this._historicalValues = next;
-    } catch {
-      // ignore — deltas just won't render
+    } catch (e) {
+      console.error("[fermentation-tracker] failed to fetch 24h history", e);
     }
   }
 
@@ -479,8 +479,10 @@ export class FermentationTrackerCard extends LitElement {
     suffix = ""
   ) {
     if (delta === undefined || isNaN(delta)) return nothing;
-    const threshold = Math.pow(10, -decimals) / 2;
-    if (Math.abs(delta) < threshold) return nothing;
+
+    if (delta === 0) {
+      return html`<span class="delta">±0${suffix}</span>`;
+    }
 
     const up = delta > 0;
     const arrow = up ? "▲" : "▼";
