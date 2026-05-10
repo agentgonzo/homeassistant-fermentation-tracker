@@ -25,7 +25,9 @@ export class FermentationTrackerCard extends LitElement {
   @state() private _signalEntityId?: string;
   @state() private _batteryEntityId?: string;
   @state() private _historyCard?: HTMLElement & { hass?: HomeAssistant };
+  @state() private _deviceInfoCard?: HTMLElement & { hass?: HomeAssistant };
   private _historyCardKey?: string;
+  private _deviceInfoCardKey?: string;
 
   // Cached state value from ~24h ago, keyed by entity_id (used for delta arrows)
   @state() private _historicalValues: Record<string, number> = {};
@@ -102,6 +104,7 @@ export class FermentationTrackerCard extends LitElement {
       font-size: 0.75em;
       margin-top: 2px;
       letter-spacing: 0.02em;
+      color: var(--primary-text-color);
     }
     .delta.bad {
       color: var(--error-color, #f44336);
@@ -198,15 +201,40 @@ export class FermentationTrackerCard extends LitElement {
     // (Re)create the history card when the tracked entities or chart type change
     if (this._config?.show_graph !== false && this._gravityEntityId) {
       const chartType = this._config?.chart_type ?? "default";
-      const entities = [this._gravityEntityId, ...this._tempEntityIds];
-      if (this._config?.show_device_info) {
-        if (this._signalEntityId) entities.push(this._signalEntityId);
-        if (this._batteryEntityId) entities.push(this._batteryEntityId);
+      const mainEntities = [this._gravityEntityId, ...this._tempEntityIds];
+      // For default chart, signal/battery stack into the same card.
+      // For apex, they get their own card so the gravity/temperature chart isn't cluttered.
+      if (chartType === "default" && this._config?.show_device_info) {
+        if (this._signalEntityId) mainEntities.push(this._signalEntityId);
+        if (this._batteryEntityId) mainEntities.push(this._batteryEntityId);
       }
-      const key = `${chartType}::${entities.join("|")}`;
-      if (key !== this._historyCardKey) {
-        this._createHistoryCard(chartType, entities, key);
+      const mainKey = `${chartType}::main::${mainEntities.join("|")}`;
+      if (mainKey !== this._historyCardKey) {
+        this._createHistoryCard(chartType, mainEntities, mainKey);
       }
+
+      // Separate device info chart for apex
+      if (chartType === "apex" && this._config?.show_device_info) {
+        const infoEntities = [
+          this._signalEntityId,
+          this._batteryEntityId,
+        ].filter((e): e is string => !!e);
+        const infoKey = `apex::info::${infoEntities.join("|")}`;
+        if (infoEntities.length > 0 && infoKey !== this._deviceInfoCardKey) {
+          this._createDeviceInfoCard(infoEntities, infoKey);
+        } else if (infoEntities.length === 0) {
+          this._deviceInfoCard = undefined;
+          this._deviceInfoCardKey = undefined;
+        }
+      } else if (this._deviceInfoCard) {
+        this._deviceInfoCard = undefined;
+        this._deviceInfoCardKey = undefined;
+      }
+    }
+
+    // Forward hass updates to the device info card too
+    if (changedProps.has("hass") && this._deviceInfoCard) {
+      this._deviceInfoCard.hass = this.hass;
     }
 
     // Refetch historical values (OG + 24h delta baseline) when entities change
@@ -245,6 +273,10 @@ export class FermentationTrackerCard extends LitElement {
     if (this._config?.show_delta_24h === false) return;
 
     const entityIds = [this._gravityEntityId, ...this._tempEntityIds];
+    if (this._config?.show_device_info) {
+      if (this._signalEntityId) entityIds.push(this._signalEntityId);
+      if (this._batteryEntityId) entityIds.push(this._batteryEntityId);
+    }
     const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const end = new Date(start.getTime() + 60 * 60 * 1000);
     try {
@@ -362,37 +394,48 @@ export class FermentationTrackerCard extends LitElement {
         apex_config: { tickAmount: 4 },
       });
     }
-    if (this._config?.show_device_info) {
-      if (this._signalEntityId) {
-        series.push({
-          entity: this._signalEntityId,
-          name: "Signal",
-          yaxis_id: "signal",
-          stroke_width: 1,
-          opacity: 0.5,
-          float_precision: 0,
-        });
-        yaxis.push({
-          id: "signal",
-          decimals: 0,
-          show: false,
-        });
-      }
-      if (this._batteryEntityId) {
-        series.push({
-          entity: this._batteryEntityId,
-          name: "Battery",
-          yaxis_id: "battery",
-          stroke_width: 1,
-          opacity: 0.5,
-          float_precision: 2,
-        });
-        yaxis.push({
-          id: "battery",
-          decimals: 2,
-          show: false,
-        });
-      }
+
+    return {
+      type: "custom:apexcharts-card",
+      graph_span: `${FermentationTrackerCard.GRAPH_WINDOW_HOURS}h`,
+      header: { show: false },
+      yaxis,
+      series,
+    };
+  }
+
+  private _buildApexDeviceInfoConfig(): Record<string, unknown> {
+    const series: Record<string, unknown>[] = [];
+    const yaxis: Record<string, unknown>[] = [];
+
+    if (this._signalEntityId) {
+      series.push({
+        entity: this._signalEntityId,
+        name: "Signal",
+        yaxis_id: "signal",
+        stroke_width: 2,
+        float_precision: 0,
+      });
+      yaxis.push({
+        id: "signal",
+        decimals: 0,
+        apex_config: { tickAmount: 4 },
+      });
+    }
+    if (this._batteryEntityId) {
+      series.push({
+        entity: this._batteryEntityId,
+        name: "Battery",
+        yaxis_id: "battery",
+        stroke_width: 2,
+        float_precision: 2,
+      });
+      yaxis.push({
+        id: "battery",
+        decimals: 2,
+        opposite: true,
+        apex_config: { tickAmount: 4 },
+      });
     }
 
     return {
@@ -402,6 +445,24 @@ export class FermentationTrackerCard extends LitElement {
       yaxis,
       series,
     };
+  }
+
+  private async _createDeviceInfoCard(entities: string[], key: string): Promise<void> {
+    this._deviceInfoCardKey = key;
+    const helpers = await (
+      window as unknown as {
+        loadCardHelpers?: () => Promise<{
+          createCardElement: (config: Record<string, unknown>) => HTMLElement & {
+            hass?: HomeAssistant;
+          };
+        }>;
+      }
+    ).loadCardHelpers?.();
+    if (!helpers) return;
+    void entities;
+    const card = helpers.createCardElement(this._buildApexDeviceInfoConfig());
+    card.hass = this.hass;
+    this._deviceInfoCard = card;
   }
 
   protected render() {
@@ -486,6 +547,13 @@ export class FermentationTrackerCard extends LitElement {
       typeof signalState?.attributes["unit_of_measurement"] === "string"
         ? signalState.attributes["unit_of_measurement"]
         : "dB";
+    const signal24h = this._signalEntityId
+      ? this._historicalValues[this._signalEntityId]
+      : undefined;
+    const signalDelta =
+      signalValue !== undefined && signal24h !== undefined
+        ? signalValue - signal24h
+        : undefined;
 
     const batteryState = this._batteryEntityId
       ? this.hass.states[this._batteryEntityId]
@@ -495,6 +563,13 @@ export class FermentationTrackerCard extends LitElement {
       typeof batteryState?.attributes["unit_of_measurement"] === "string"
         ? batteryState.attributes["unit_of_measurement"]
         : "V";
+    const battery24h = this._batteryEntityId
+      ? this._historicalValues[this._batteryEntityId]
+      : undefined;
+    const batteryDelta =
+      batteryValue !== undefined && battery24h !== undefined
+        ? batteryValue - battery24h
+        : undefined;
     const primaryTemp24h = primaryTemp
       ? this._historicalValues[primaryTemp.id]
       : undefined;
@@ -566,6 +641,7 @@ export class FermentationTrackerCard extends LitElement {
                         ? `${signalValue.toFixed(0)} ${signalUom}`
                         : "—"}
                     </span>
+                    ${this._renderDelta(signalDelta, 0, "neutral", ` ${signalUom}`)}
                   </div>
                   <div class="metric">
                     <span class="metric-label">Battery</span>
@@ -574,6 +650,7 @@ export class FermentationTrackerCard extends LitElement {
                         ? `${batteryValue.toFixed(2)} ${batteryUom}`
                         : "—"}
                     </span>
+                    ${this._renderDelta(batteryDelta, 2, "neutral", ` ${batteryUom}`)}
                   </div>
                 </div>
               `
@@ -592,9 +669,14 @@ export class FermentationTrackerCard extends LitElement {
                   >
                   via HACS or switch chart style back to default.
                 </div>`
-              : this._historyCard
-                ? html`<div class="graph-wrapper">${this._historyCard}</div>`
-                : nothing
+              : html`
+                  ${this._historyCard
+                    ? html`<div class="graph-wrapper">${this._historyCard}</div>`
+                    : nothing}
+                  ${this._deviceInfoCard
+                    ? html`<div class="graph-wrapper">${this._deviceInfoCard}</div>`
+                    : nothing}
+                `
             : nothing}
         </div>
       </ha-card>
