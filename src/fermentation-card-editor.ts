@@ -127,15 +127,12 @@ export class FermentationCardEditor extends LitElement {
       return html`<div class="card-config"><p class="hint">Loading…</p></div>`;
     }
 
-    const deviceFilter = this._deviceFilter(this._configEntryDomains);
-
     return html`
       <div class="card-config">
         <ha-device-picker
           .hass=${this.hass}
           .value=${this._config.device_id ?? ""}
           .label=${"Fermentation Device"}
-          .deviceFilter=${deviceFilter}
           @value-changed=${this._deviceChanged}
         ></ha-device-picker>
 
