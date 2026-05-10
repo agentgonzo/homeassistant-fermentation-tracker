@@ -102,7 +102,7 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
             <p>Click the edit icon to select your fermentation device.</p>
           </div>
         </ha-card>
-      `;const t=this._gravityEntityId?this.hass.states[this._gravityEntityId]:void 0,e=t?parseFloat(t.state):void 0,i=this.hass.devices[this._config.device_id],s=i?.name_by_user??i?.name??"Fermentation Vessel",r=this._config.name??s,n=this._config.gravity_unit,o=this._formatGravityConverted(e,n),a=this._config.original_gravity,c=a&&e?function(t,e){return(t-e)/(t-1)*100}(a,e):void 0,h=a&&e?function(t,e){return 131.25*(t-e)}(a,e):void 0,d=this._tempEntityIds.map(t=>{const e=this.hass.states[t];if(!e)return null;const i=parseFloat(e.state);if(isNaN(i))return null;const s="string"==typeof e.attributes.unit_of_measurement?e.attributes.unit_of_measurement:"°C",r=this.hass.entities[t]?.entity_id===t?e.attributes.friendly_name:void 0;return{id:t,name:"string"==typeof r?r:t,value:i,uom:s}}).filter(t=>null!==t),l=d[0],p=d.slice(1);return F`
+      `;const t=this._gravityEntityId?this.hass.states[this._gravityEntityId]:void 0,e=t?parseFloat(t.state):void 0,i=this.hass.devices[this._config.device_id],s=i?.name_by_user??i?.name??"Fermentation Vessel",r=this._config.name??s,n=this._config.gravity_unit,o=this._formatGravityConverted(e,n),a=this._config.original_gravity,c=a&&e?function(t,e){return(t-e)/(t-1)*100}(a,e):void 0,h=a&&e?function(t,e){return 131.25*(t-e)}(a,e):void 0,d=this._tempEntityIds.map(t=>{const e=this.hass.states[t];if(!e)return null;const i=parseFloat(e.state);if(isNaN(i))return null;const s="string"==typeof e.attributes.unit_of_measurement?e.attributes.unit_of_measurement:"°C",r=this.hass.entities[t]?.entity_id===t?e.attributes.friendly_name:void 0;return{id:t,name:"string"==typeof r?r:t,value:i,uom:s}}).filter(t=>null!==t),l=d[0];return F`
       <ha-card>
         <div class="card-header">
           <div class="name">${r}</div>
@@ -121,11 +121,6 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
               <span class="metric-value">
                 ${l?`${l.value.toFixed(1)} ${l.uom}`:"—"}
               </span>
-              ${p.map(t=>F`
-                  <span class="metric-secondary"
-                    >${t.name}: ${t.value.toFixed(1)} ${t.uom}</span
-                  >
-                `)}
             </div>
           </div>
 

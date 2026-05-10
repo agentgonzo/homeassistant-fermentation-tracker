@@ -294,7 +294,6 @@ export class FermentationTrackerCard extends LitElement {
       })
       .filter((r): r is { id: string; name: string; value: number; uom: string } => r !== null);
     const primaryTemp = temperatureReadings[0];
-    const additionalTemps = temperatureReadings.slice(1);
 
     return html`
       <ha-card>
@@ -319,13 +318,6 @@ export class FermentationTrackerCard extends LitElement {
                   ? `${primaryTemp.value.toFixed(1)} ${primaryTemp.uom}`
                   : "—"}
               </span>
-              ${additionalTemps.map(
-                (t) => html`
-                  <span class="metric-secondary"
-                    >${t.name}: ${t.value.toFixed(1)} ${t.uom}</span
-                  >
-                `
-              )}
             </div>
           </div>
 
