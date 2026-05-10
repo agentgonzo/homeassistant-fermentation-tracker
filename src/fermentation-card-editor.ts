@@ -93,7 +93,7 @@ export class FermentationCardEditor extends LitElement {
     try {
       const card = helpers.createCardElement({
         type: "markdown",
-        content: "",
+        content: "_",
       } as { type: string });
       await card.constructor.getConfigElement?.();
     } catch {
