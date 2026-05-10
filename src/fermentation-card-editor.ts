@@ -18,6 +18,10 @@ const computeLabel = (schema: { name: string }): string => {
       return "Card title (optional)";
     case "gravity_unit":
       return "Also show gravity as";
+    case "time_range":
+      return "Time range";
+    case "time_range_custom_hours":
+      return "Custom range (hours)";
     case "show_graph":
       return "Show trend graph";
     case "show_delta_24h":
@@ -100,6 +104,29 @@ export class FermentationCardEditor extends LitElement {
                 { value: "Brix", label: "+ Brix (°Bx)" },
               ],
             },
+          },
+        },
+        {
+          name: "time_range",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                { value: "auto", label: "Auto (since fermentation start)" },
+                { value: "1d", label: "Last 24 hours" },
+                { value: "3d", label: "Last 3 days" },
+                { value: "7d", label: "Last 7 days" },
+                { value: "14d", label: "Last 14 days" },
+                { value: "30d", label: "Last 30 days" },
+                { value: "custom", label: "Custom" },
+              ],
+            },
+          },
+        },
+        {
+          name: "time_range_custom_hours",
+          selector: {
+            number: { min: 1, max: 720, step: 1, mode: "box" },
           },
         },
         { name: "show_graph", selector: { boolean: {} } },

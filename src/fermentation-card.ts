@@ -36,7 +36,16 @@ export class FermentationTrackerCard extends LitElement {
   private _historicalKey?: string;
   private _historicalRefreshTimer?: ReturnType<typeof setInterval>;
 
-  private static readonly GRAPH_WINDOW_HOURS = 72;
+  // Resolved hours for the current view (graph + OG). Recomputed when config changes.
+  @state() private _resolvedRangeHours = 72;
+  private _rangeKey?: string;
+
+  // Hard ceiling for auto-detection lookback (also the fallback if no gap is found)
+  private static readonly AUTO_DETECT_LOOKBACK_HOURS = 30 * 24;
+  // A gap of this length without readings is considered the start of a new fermentation
+  private static readonly AUTO_DETECT_GAP_HOURS = 6;
+  // Fallback range when auto detection finds no gap
+  private static readonly AUTO_FALLBACK_HOURS = 7 * 24;
 
   static styles = css`
     ha-card {
@@ -237,13 +246,100 @@ export class FermentationTrackerCard extends LitElement {
       this._deviceInfoCard.hass = this.hass;
     }
 
-    // Refetch historical values (OG + 24h delta baseline) when entities change
+    // Resolve the time range when the gravity entity or range config changes
     if (this._gravityEntityId) {
-      const histKey = [this._gravityEntityId, ...this._tempEntityIds].join("|");
+      const rangeKey = `${this._gravityEntityId}::${this._config?.time_range ?? "auto"}::${this._config?.time_range_custom_hours ?? ""}`;
+      if (rangeKey !== this._rangeKey) {
+        this._rangeKey = rangeKey;
+        this._resolveTimeRange();
+      }
+    }
+
+    // Refetch historical values (OG + 24h delta baseline) when entities or range change
+    if (this._gravityEntityId) {
+      const histKey = `${this._resolvedRangeHours}::${[this._gravityEntityId, ...this._tempEntityIds].join("|")}`;
       if (histKey !== this._historicalKey) {
         this._historicalKey = histKey;
         this._fetchHistoricalValues();
       }
+    }
+  }
+
+  private async _resolveTimeRange(): Promise<void> {
+    const range = this._config?.time_range ?? "auto";
+    const presetHours: Record<string, number> = {
+      "1d": 24,
+      "3d": 72,
+      "7d": 168,
+      "14d": 336,
+      "30d": 720,
+    };
+
+    let hours: number;
+    if (range === "custom") {
+      hours = this._config?.time_range_custom_hours ?? 72;
+    } else if (range === "auto") {
+      hours = await this._detectAutoRangeHours();
+    } else {
+      hours = presetHours[range] ?? 72;
+    }
+
+    if (hours !== this._resolvedRangeHours) {
+      this._resolvedRangeHours = hours;
+      // Recreate the graph with the new span
+      this._historyCardKey = undefined;
+      this._deviceInfoCardKey = undefined;
+    }
+  }
+
+  private async _detectAutoRangeHours(): Promise<number> {
+    if (!this.hass || !this._gravityEntityId) {
+      return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+    }
+    const lookbackMs =
+      FermentationTrackerCard.AUTO_DETECT_LOOKBACK_HOURS * 60 * 60 * 1000;
+    const start = new Date(Date.now() - lookbackMs);
+    const end = new Date();
+    try {
+      const result = await this.hass.callWS<
+        Record<string, Array<{ s: string; lu?: number }>>
+      >({
+        type: "history/history_during_period",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        entity_ids: [this._gravityEntityId],
+        minimal_response: true,
+        no_attributes: true,
+      });
+      const states = result[this._gravityEntityId] ?? [];
+      if (states.length < 2) {
+        return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+      }
+      // Timestamps from HA WS are seconds (float). Normalise to ms.
+      const timestamps = states
+        .map((s) => (typeof s.lu === "number" ? s.lu : 0))
+        .filter((t) => t > 0)
+        .map((t) => (t < 1e12 ? t * 1000 : t));
+
+      const gapMs =
+        FermentationTrackerCard.AUTO_DETECT_GAP_HOURS * 60 * 60 * 1000;
+      // Walk backwards looking for the most recent 6h+ gap.
+      // Start of fermentation = first reading AFTER the gap.
+      for (let i = timestamps.length - 1; i > 0; i--) {
+        if (timestamps[i] - timestamps[i - 1] > gapMs) {
+          const startMs = timestamps[i];
+          const hoursSince = (Date.now() - startMs) / 3600000;
+          // Round up to nearest hour, minimum 1
+          return Math.max(1, Math.ceil(hoursSince));
+        }
+      }
+      // No gap found — use the full available range
+      const earliest = timestamps[0];
+      const hoursSinceEarliest = (Date.now() - earliest) / 3600000;
+      return Math.max(1, Math.ceil(hoursSinceEarliest));
+    } catch (e) {
+      console.error("[fermentation-tracker] auto range detection failed", e);
+      return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
     }
   }
 
@@ -307,7 +403,7 @@ export class FermentationTrackerCard extends LitElement {
   private async _fetchOriginalGravity(): Promise<void> {
     if (!this.hass || !this._gravityEntityId) return;
     const start = new Date(
-      Date.now() - FermentationTrackerCard.GRAPH_WINDOW_HOURS * 60 * 60 * 1000
+      Date.now() - this._resolvedRangeHours * 60 * 60 * 1000
     );
     const end = new Date(start.getTime() + 60 * 60 * 1000);
     try {
@@ -353,7 +449,7 @@ export class FermentationTrackerCard extends LitElement {
     const config =
       chartType === "apex"
         ? this._buildApexConfig()
-        : { type: "history-graph", entities, hours_to_show: FermentationTrackerCard.GRAPH_WINDOW_HOURS };
+        : { type: "history-graph", entities, hours_to_show: this._resolvedRangeHours };
 
     const card = helpers.createCardElement(config);
     card.hass = this.hass;
@@ -397,7 +493,7 @@ export class FermentationTrackerCard extends LitElement {
 
     return {
       type: "custom:apexcharts-card",
-      graph_span: `${FermentationTrackerCard.GRAPH_WINDOW_HOURS}h`,
+      graph_span: `${this._resolvedRangeHours}h`,
       header: { show: false },
       yaxis,
       series,
@@ -440,7 +536,7 @@ export class FermentationTrackerCard extends LitElement {
 
     return {
       type: "custom:apexcharts-card",
-      graph_span: `${FermentationTrackerCard.GRAPH_WINDOW_HOURS}h`,
+      graph_span: `${this._resolvedRangeHours}h`,
       header: { show: false },
       yaxis,
       series,
