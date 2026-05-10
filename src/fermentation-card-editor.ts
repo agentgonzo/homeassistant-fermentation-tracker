@@ -29,9 +29,9 @@ const computeLabel = (schema: { name: string }): string => {
     case "show_device_info":
       return "Show additional device information";
     case "filter_settling":
-      return "Filter initial settling readings (iSpindel)";
+      return "Discard initial erratic gravity readings";
     case "finished_threshold":
-      return "Complete when gravity drops less than (SG/24h)";
+      return "Fermentation is finished when gravity drops by less than (SG/24h)";
     case "chart_type":
       return "Chart style";
     case "gravity_entity":
