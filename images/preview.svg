@@ -1,30 +1,83 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="420" height="320" viewBox="0 0 420 320" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
-  <rect width="420" height="320" rx="12" fill="#1c1c1c"/>
-  <text x="20" y="36" fill="#fff" font-size="16" font-weight="500">Brew Vessel 1</text>
-  <text x="20" y="54" fill="#9b9b9b" font-size="11">iSpindel</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="540" viewBox="0 0 480 540" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
+  <!-- Card background -->
+  <rect width="480" height="540" rx="12" fill="#1c1c1c"/>
 
-  <rect x="20" y="76" width="180" height="74" rx="8" fill="#2a2a2a"/>
-  <text x="34" y="98" fill="#9b9b9b" font-size="10" letter-spacing="1">GRAVITY</text>
-  <text x="34" y="128" fill="#03a9f4" font-size="22" font-weight="500">1.0420</text>
-  <text x="34" y="144" fill="#9b9b9b" font-size="11">10.5 °P</text>
+  <!-- Header -->
+  <text x="20" y="36" fill="#ffffff" font-size="18" font-weight="500">iSpindel</text>
 
-  <rect x="220" y="76" width="180" height="74" rx="8" fill="#2a2a2a"/>
-  <text x="234" y="98" fill="#9b9b9b" font-size="10" letter-spacing="1">TEMPERATURE</text>
-  <text x="234" y="128" fill="#ff9800" font-size="22" font-weight="500">19.4 °C</text>
+  <!-- Primary metrics row: Gravity + Temperature -->
+  <g transform="translate(20, 54)">
+    <!-- Gravity tile -->
+    <rect x="0" y="0" width="212" height="92" rx="8" fill="#2a2a2a"/>
+    <text x="14" y="22" fill="#9b9b9b" font-size="11" letter-spacing="1">GRAVITY</text>
+    <text x="14" y="54" fill="#03a9f4" font-size="26" font-weight="500">1.0420</text>
+    <text x="14" y="74" fill="#4caf50" font-size="11">▼ −0.0028</text>
 
-  <rect x="20" y="166" width="120" height="60" rx="8" fill="#2a2a2a"/>
-  <text x="34" y="184" fill="#9b9b9b" font-size="10" letter-spacing="1">OG</text>
-  <text x="34" y="212" fill="#fff" font-size="18" font-weight="500">1.052</text>
+    <!-- Temperature tile -->
+    <rect x="220" y="0" width="212" height="92" rx="8" fill="#2a2a2a"/>
+    <text x="234" y="22" fill="#9b9b9b" font-size="11" letter-spacing="1">TEMPERATURE</text>
+    <text x="234" y="54" fill="#ff9800" font-size="26" font-weight="500">19.4 °C</text>
+    <text x="234" y="74" fill="#e0e0e0" font-size="11">▲ +0.3</text>
+  </g>
 
-  <rect x="150" y="166" width="120" height="60" rx="8" fill="#2a2a2a"/>
-  <text x="164" y="184" fill="#9b9b9b" font-size="10" letter-spacing="1">ATTENUATION</text>
-  <text x="164" y="212" fill="#fff" font-size="18" font-weight="500">76.9%</text>
+  <!-- Secondary metrics row: OG, Attenuation, ABV -->
+  <g transform="translate(20, 162)">
+    <!-- OG tile -->
+    <rect x="0" y="0" width="138" height="80" rx="8" fill="#2a2a2a"/>
+    <text x="14" y="22" fill="#9b9b9b" font-size="11" letter-spacing="1">OG</text>
+    <text x="14" y="56" fill="#ffffff" font-size="22" font-weight="500">1.0520</text>
 
-  <rect x="280" y="166" width="120" height="60" rx="8" fill="#2a2a2a"/>
-  <text x="294" y="184" fill="#9b9b9b" font-size="10" letter-spacing="1">ABV</text>
-  <text x="294" y="212" fill="#4caf50" font-size="18" font-weight="500">5.25%</text>
+    <!-- Attenuation tile -->
+    <rect x="146" y="0" width="138" height="80" rx="8" fill="#2a2a2a"/>
+    <text x="160" y="22" fill="#9b9b9b" font-size="11" letter-spacing="1">ATTENUATION</text>
+    <text x="160" y="50" fill="#ffffff" font-size="22" font-weight="500">76.9%</text>
+    <text x="160" y="68" fill="#4caf50" font-size="10">▲ +5.4%</text>
 
-  <rect x="20" y="244" width="380" height="60" rx="8" fill="#2a2a2a"/>
-  <polyline points="30,290 70,285 110,275 150,265 190,260 230,256 270,254 310,253 350,252 390,252" fill="none" stroke="#03a9f4" stroke-width="2"/>
-  <text x="30" y="262" fill="#9b9b9b" font-size="9">72h gravity trend</text>
+    <!-- ABV tile -->
+    <rect x="294" y="0" width="138" height="80" rx="8" fill="#2a2a2a"/>
+    <text x="308" y="22" fill="#9b9b9b" font-size="11" letter-spacing="1">ABV</text>
+    <text x="308" y="50" fill="#4caf50" font-size="22" font-weight="500">5.25%</text>
+    <text x="308" y="68" fill="#4caf50" font-size="10">▲ +0.37%</text>
+  </g>
+
+  <!-- Trend graph (two stacked panels: gravity + temperature) -->
+  <g transform="translate(20, 258)">
+    <rect x="0" y="0" width="440" height="260" rx="8" fill="#2a2a2a"/>
+
+    <!-- Gravity panel -->
+    <g transform="translate(0, 12)">
+      <text x="14" y="14" fill="#9b9b9b" font-size="10" letter-spacing="1">GRAVITY (SG)</text>
+      <!-- Y-axis labels -->
+      <text x="36" y="34" fill="#666" font-size="9" text-anchor="end">1.052</text>
+      <text x="36" y="64" fill="#666" font-size="9" text-anchor="end">1.040</text>
+      <text x="36" y="94" fill="#666" font-size="9" text-anchor="end">1.028</text>
+      <!-- Grid lines -->
+      <line x1="44" y1="32" x2="426" y2="32" stroke="#3a3a3a" stroke-width="1" stroke-dasharray="2 4"/>
+      <line x1="44" y1="62" x2="426" y2="62" stroke="#3a3a3a" stroke-width="1" stroke-dasharray="2 4"/>
+      <line x1="44" y1="92" x2="426" y2="92" stroke="#3a3a3a" stroke-width="1" stroke-dasharray="2 4"/>
+      <!-- Gravity curve: starts ~32 (1.052) descends to ~78 (1.042) -->
+      <path d="M 44,32 C 80,34 110,38 140,46 S 200,62 240,68 280,72 320,75 380,77 426,78"
+            fill="none" stroke="#03a9f4" stroke-width="2"/>
+    </g>
+
+    <!-- Temperature panel -->
+    <g transform="translate(0, 138)">
+      <text x="14" y="14" fill="#9b9b9b" font-size="10" letter-spacing="1">TEMPERATURE (°C)</text>
+      <!-- Y-axis labels -->
+      <text x="36" y="34" fill="#666" font-size="9" text-anchor="end">21.0</text>
+      <text x="36" y="64" fill="#666" font-size="9" text-anchor="end">19.5</text>
+      <text x="36" y="94" fill="#666" font-size="9" text-anchor="end">18.0</text>
+      <!-- Grid lines -->
+      <line x1="44" y1="32" x2="426" y2="32" stroke="#3a3a3a" stroke-width="1" stroke-dasharray="2 4"/>
+      <line x1="44" y1="62" x2="426" y2="62" stroke="#3a3a3a" stroke-width="1" stroke-dasharray="2 4"/>
+      <line x1="44" y1="92" x2="426" y2="92" stroke="#3a3a3a" stroke-width="1" stroke-dasharray="2 4"/>
+      <!-- Temperature curve: wobbles around 62 (19.5°C) with small dips -->
+      <path d="M 44,68 L 80,64 L 116,66 L 152,60 L 188,62 L 224,58 L 260,62 L 296,64 L 332,60 L 368,62 L 404,64 L 426,62"
+            fill="none" stroke="#ff9800" stroke-width="2"/>
+    </g>
+
+    <!-- X-axis (shared) -->
+    <text x="44" y="252" fill="#666" font-size="9">3 days ago</text>
+    <text x="426" y="252" fill="#666" font-size="9" text-anchor="end">now</text>
+  </g>
 </svg>
