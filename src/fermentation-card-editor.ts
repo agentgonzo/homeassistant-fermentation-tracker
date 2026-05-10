@@ -20,6 +20,7 @@ export class FermentationCardEditor extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @state() private _config?: FermentationCardConfig;
   @state() private _configEntryDomains: Record<string, string> = {};
+  @state() private _componentsReady = false;
 
   static styles = css`
     .card-config {
@@ -61,19 +62,7 @@ export class FermentationCardEditor extends LitElement {
   }
 
   protected async firstUpdated(): Promise<void> {
-    // Force HA to load picker components if they aren't registered yet.
-    // loadCardHelpers transitively imports ha-device-picker / ha-entity-picker.
-    if (!customElements.get("ha-device-picker")) {
-      const helpers = await (window as unknown as {
-        loadCardHelpers?: () => Promise<unknown>;
-      }).loadCardHelpers?.();
-      if (helpers) {
-        await Promise.race([
-          customElements.whenDefined("ha-device-picker"),
-          new Promise((resolve) => setTimeout(resolve, 2000)),
-        ]);
-      }
-    }
+    await this._loadHaComponents();
 
     const result = await this.hass.callWS<ConfigEntryResult>({
       type: "config_entries/get",
@@ -81,6 +70,30 @@ export class FermentationCardEditor extends LitElement {
     this._configEntryDomains = Object.fromEntries(
       result.entries.map((e) => [e.entry_id, e.domain])
     );
+    this._componentsReady = true;
+  }
+
+  // HA lazy-loads picker components only when a built-in card's editor opens.
+  // This trick instantiates a built-in card and asks for its config element,
+  // which transitively registers ha-device-picker / ha-entity-picker etc.
+  private async _loadHaComponents(): Promise<void> {
+    if (
+      customElements.get("ha-device-picker") &&
+      customElements.get("ha-entity-picker")
+    ) {
+      return;
+    }
+    const win = window as unknown as {
+      loadCardHelpers?: () => Promise<{
+        createCardElement: (config: { type: string }) => HTMLElement & {
+          constructor: { getConfigElement?: () => Promise<HTMLElement> };
+        };
+      }>;
+    };
+    const helpers = await win.loadCardHelpers?.();
+    if (!helpers) return;
+    const card = helpers.createCardElement({ type: "entities" });
+    await card.constructor.getConfigElement?.();
   }
 
   private _deviceFilter = memoizeOne(
@@ -105,6 +118,9 @@ export class FermentationCardEditor extends LitElement {
 
   protected render() {
     if (!this.hass || !this._config) return nothing;
+    if (!this._componentsReady) {
+      return html`<div class="card-config"><p class="hint">Loading…</p></div>`;
+    }
 
     const deviceFilter = this._deviceFilter(this._configEntryDomains);
 
