@@ -179,7 +179,7 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
       letter-spacing: 0.05em;
       margin-bottom: -8px;
     }
-  `}setConfig(t){this._config=t}async firstUpdated(){await this._loadHaComponents();const t=await this.hass.callWS({type:"config_entries/get"});this._configEntryDomains=Object.fromEntries(t.entries.map(t=>[t.entry_id,t.domain])),this._componentsReady=!0}async _loadHaComponents(){if(customElements.get("ha-device-picker")&&customElements.get("ha-entity-picker"))return;const t=window,e=await(t.loadCardHelpers?.());if(!e)return;const i=e.createCardElement({type:"entities"});await(i.constructor.getConfigElement?.())}render(){if(!this.hass||!this._config)return W;if(!this._componentsReady)return V`<div class="card-config"><p class="hint">Loading…</p></div>`;const t=this._deviceFilter(this._configEntryDomains);return V`
+  `}setConfig(t){this._config=t}async firstUpdated(){await this._loadHaComponents();const t=await this.hass.callWS({type:"config_entries/get"});this._configEntryDomains=Object.fromEntries(t.map(t=>[t.entry_id,t.domain])),this._componentsReady=!0}async _loadHaComponents(){if(customElements.get("ha-device-picker")&&customElements.get("ha-entity-picker"))return;const t=window,e=await(t.loadCardHelpers?.());if(e)try{const t=e.createCardElement({type:"entities",entities:[]});await(t.constructor.getConfigElement?.())}catch{}}render(){if(!this.hass||!this._config)return W;if(!this._componentsReady)return V`<div class="card-config"><p class="hint">Loading…</p></div>`;const t=this._deviceFilter(this._configEntryDomains);return V`
       <div class="card-config">
         <ha-device-picker
           .hass=${this.hass}

@@ -5,9 +5,7 @@ import type { HomeAssistant, FermentationCardConfig, DeviceRegistryEntry } from 
 import { KNOWN_FERMENTATION_DOMAINS } from "./const";
 import { deviceHasGravityEntity } from "./utils/entity-discovery";
 
-interface ConfigEntryResult {
-  entries: Array<{ entry_id: string; domain: string }>;
-}
+type ConfigEntry = { entry_id: string; domain: string };
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -64,11 +62,11 @@ export class FermentationCardEditor extends LitElement {
   protected async firstUpdated(): Promise<void> {
     await this._loadHaComponents();
 
-    const result = await this.hass.callWS<ConfigEntryResult>({
+    const entries = await this.hass.callWS<ConfigEntry[]>({
       type: "config_entries/get",
     });
     this._configEntryDomains = Object.fromEntries(
-      result.entries.map((e) => [e.entry_id, e.domain])
+      entries.map((e) => [e.entry_id, e.domain])
     );
     this._componentsReady = true;
   }
@@ -92,8 +90,16 @@ export class FermentationCardEditor extends LitElement {
     };
     const helpers = await win.loadCardHelpers?.();
     if (!helpers) return;
-    const card = helpers.createCardElement({ type: "entities" });
-    await card.constructor.getConfigElement?.();
+    try {
+      const card = helpers.createCardElement({
+        type: "entities",
+        entities: [],
+      } as { type: string });
+      await card.constructor.getConfigElement?.();
+    } catch {
+      // Ignore — registration of picker elements happens as a side effect
+      // of loading the editor module, even if setConfig errors.
+    }
   }
 
   private _deviceFilter = memoizeOne(
