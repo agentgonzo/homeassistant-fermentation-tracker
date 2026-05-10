@@ -1,7 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { HomeAssistant, FermentationCardConfig } from "./types";
-import { KNOWN_FERMENTATION_DOMAINS } from "./const";
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -52,16 +51,16 @@ export class FermentationCardEditor extends LitElement {
   }
 
   private _buildSchema(deviceId: string | undefined): HaFormSchema {
-    const fermentationFilters = [...KNOWN_FERMENTATION_DOMAINS].map((domain) => ({
-      integration: domain,
-    }));
-
+    // We don't filter the device list because users running iSpindel/Tilt via
+    // MQTT discovery have integration=mqtt rather than ispindel/tilt_ble, and
+    // ha-form's device selector doesn't support custom filter callbacks.
+    // The auto-discovery of gravity/temperature entities handles validation.
     const baseSchema: Array<Record<string, unknown>> = [
       {
         name: "device_id",
         required: true,
         selector: {
-          device: { filter: fermentationFilters },
+          device: {},
         },
       },
     ];
