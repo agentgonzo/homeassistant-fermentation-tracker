@@ -92,11 +92,9 @@ export class FermentationTrackerCard extends LitElement {
       margin-top: 2px;
       letter-spacing: 0.02em;
     }
-    .delta.up,
     .delta.bad {
       color: var(--error-color, #f44336);
     }
-    .delta.down,
     .delta.good {
       color: var(--success-color, #4caf50);
     }
@@ -407,7 +405,7 @@ export class FermentationTrackerCard extends LitElement {
               <span class="metric-value">
                 ${gravityRaw !== undefined && !isNaN(gravityRaw) ? gravityRaw.toFixed(4) : "—"}
               </span>
-              ${this._renderDelta(gravityDelta, 4, true)}
+              ${this._renderDelta(gravityDelta, 4, "down-good")}
               ${gravitySecondary !== undefined
                 ? html`<span class="metric-secondary">${gravitySecondary}</span>`
                 : nothing}
@@ -419,7 +417,7 @@ export class FermentationTrackerCard extends LitElement {
                   ? `${primaryTemp.value.toFixed(1)} ${primaryTemp.uom}`
                   : "—"}
               </span>
-              ${this._renderDelta(tempDelta, 1, false)}
+              ${this._renderDelta(tempDelta, 1, "neutral")}
             </div>
           </div>
 
@@ -435,14 +433,14 @@ export class FermentationTrackerCard extends LitElement {
                     <span class="metric-value">
                       ${attenuation !== undefined ? `${attenuation.toFixed(1)}%` : "—"}
                     </span>
-                    ${this._renderDelta(attenuationDelta, 1, false, "%")}
+                    ${this._renderDelta(attenuationDelta, 1, "up-good", "%")}
                   </div>
                   <div class="metric abv">
                     <span class="metric-label">ABV</span>
                     <span class="metric-value">
                       ${abv !== undefined ? `${abv.toFixed(2)}%` : "—"}
                     </span>
-                    ${this._renderDelta(abvDelta, 2, false, "%")}
+                    ${this._renderDelta(abvDelta, 2, "up-good", "%")}
                   </div>
                 </div>
               `
@@ -470,12 +468,14 @@ export class FermentationTrackerCard extends LitElement {
     `;
   }
 
-  // For gravity (gravityIsBetterDown=true), a downward trend is "good" (green).
-  // For others, no semantic colour — just neutral up/down indicators.
+  // direction:
+  //   "down-good": gravity — falling SG is fermentation progress (green)
+  //   "up-good":   attenuation, ABV — rising values are progress (green)
+  //   "neutral":   temperature — no semantic, no colour
   private _renderDelta(
     delta: number | undefined,
     decimals: number,
-    gravityIsBetterDown: boolean,
+    direction: "up-good" | "down-good" | "neutral",
     suffix = ""
   ) {
     if (delta === undefined || isNaN(delta)) return nothing;
@@ -487,14 +487,11 @@ export class FermentationTrackerCard extends LitElement {
     const up = delta > 0;
     const arrow = up ? "▲" : "▼";
     const sign = up ? "+" : "−";
-    const goodForGravity = gravityIsBetterDown ? !up : up;
-    const cls = gravityIsBetterDown
-      ? goodForGravity
-        ? "delta good"
-        : "delta bad"
-      : up
-        ? "delta up"
-        : "delta down";
+
+    let cls = "delta";
+    if (direction === "up-good") cls += up ? " good" : " bad";
+    else if (direction === "down-good") cls += up ? " bad" : " good";
+
     return html`<span class="${cls}">
       ${arrow} ${sign}${Math.abs(delta).toFixed(decimals)}${suffix}
     </span>`;
