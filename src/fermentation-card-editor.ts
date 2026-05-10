@@ -30,6 +30,8 @@ const computeLabel = (schema: { name: string }): string => {
       return "Show additional device information";
     case "filter_settling":
       return "Filter initial settling readings (iSpindel)";
+    case "finished_threshold":
+      return "Complete when gravity drops less than (SG/24h)";
     case "chart_type":
       return "Chart style";
     case "gravity_entity":
@@ -135,6 +137,10 @@ export class FermentationCardEditor extends LitElement {
         { name: "show_delta_24h", selector: { boolean: {} } },
         { name: "show_device_info", selector: { boolean: {} } },
         { name: "filter_settling", selector: { boolean: {} } },
+        {
+          name: "finished_threshold",
+          selector: { number: { min: 0.0001, max: 0.005, step: 0.0001, mode: "box" } },
+        },
         {
           name: "chart_type",
           selector: {

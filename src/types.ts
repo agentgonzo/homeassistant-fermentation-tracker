@@ -49,4 +49,5 @@ export interface FermentationCardConfig {
   time_range?: "auto" | "1d" | "3d" | "7d" | "14d" | "30d" | "custom";
   time_range_custom_hours?: number;
   filter_settling?: boolean;
+  finished_threshold?: number;
 }

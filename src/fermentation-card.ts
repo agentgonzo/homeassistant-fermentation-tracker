@@ -959,7 +959,7 @@ export class FermentationTrackerCard extends LitElement {
     const fermentationStatus: "active" | "finished" | undefined =
       change24h === undefined
         ? undefined
-        : change24h > -FermentationTrackerCard.FERMENTATION_FINISHED_THRESHOLD_SG
+        : change24h > -(this._config?.finished_threshold ?? FermentationTrackerCard.FERMENTATION_FINISHED_THRESHOLD_SG)
           ? "finished"
           : "active";
 
