@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="320" viewBox="0 0 420 320" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">
+  <rect width="420" height="320" rx="12" fill="#1c1c1c"/>
+  <text x="20" y="36" fill="#fff" font-size="16" font-weight="500">Brew Vessel 1</text>
+  <text x="20" y="54" fill="#9b9b9b" font-size="11">iSpindel</text>
+
+  <rect x="20" y="76" width="180" height="74" rx="8" fill="#2a2a2a"/>
+  <text x="34" y="98" fill="#9b9b9b" font-size="10" letter-spacing="1">GRAVITY</text>
+  <text x="34" y="128" fill="#03a9f4" font-size="22" font-weight="500">1.0420</text>
+  <text x="34" y="144" fill="#9b9b9b" font-size="11">10.5 °P</text>
+
+  <rect x="220" y="76" width="180" height="74" rx="8" fill="#2a2a2a"/>
+  <text x="234" y="98" fill="#9b9b9b" font-size="10" letter-spacing="1">TEMPERATURE</text>
+  <text x="234" y="128" fill="#ff9800" font-size="22" font-weight="500">19.4 °C</text>
+
+  <rect x="20" y="166" width="120" height="60" rx="8" fill="#2a2a2a"/>
+  <text x="34" y="184" fill="#9b9b9b" font-size="10" letter-spacing="1">OG</text>
+  <text x="34" y="212" fill="#fff" font-size="18" font-weight="500">1.052</text>
+
+  <rect x="150" y="166" width="120" height="60" rx="8" fill="#2a2a2a"/>
+  <text x="164" y="184" fill="#9b9b9b" font-size="10" letter-spacing="1">ATTENUATION</text>
+  <text x="164" y="212" fill="#fff" font-size="18" font-weight="500">76.9%</text>
+
+  <rect x="280" y="166" width="120" height="60" rx="8" fill="#2a2a2a"/>
+  <text x="294" y="184" fill="#9b9b9b" font-size="10" letter-spacing="1">ABV</text>
+  <text x="294" y="212" fill="#4caf50" font-size="18" font-weight="500">5.25%</text>
+
+  <rect x="20" y="244" width="380" height="60" rx="8" fill="#2a2a2a"/>
+  <polyline points="30,290 70,285 110,275 150,265 190,260 230,256 270,254 310,253 350,252 390,252" fill="none" stroke="#03a9f4" stroke-width="2"/>
+  <text x="30" y="262" fill="#9b9b9b" font-size="9">72h gravity trend</text>
+</svg>

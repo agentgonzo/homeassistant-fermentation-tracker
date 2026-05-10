@@ -5,6 +5,8 @@
 
 A Home Assistant Lovelace card for monitoring fermentation hydrometers such as the iSpindel, Tilt Hydrometer, and RAPT Pill.
 
+![Card preview](images/preview.svg)
+
 ## Features
 
 - Device picker filtered to fermentation devices only
