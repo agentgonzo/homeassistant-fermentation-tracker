@@ -21,6 +21,11 @@ export class FermentationTrackerCard extends LitElement {
   @state() private _historyCard?: HTMLElement & { hass?: HomeAssistant };
   private _historyCardKey?: string;
 
+  // Cached state value from ~24h ago, keyed by entity_id
+  @state() private _historicalValues: Record<string, number> = {};
+  private _historicalKey?: string;
+  private _historicalRefreshTimer?: ReturnType<typeof setInterval>;
+
   static styles = css`
     ha-card {
       height: 100%;
@@ -81,6 +86,19 @@ export class FermentationTrackerCard extends LitElement {
       font-size: 0.85em;
       color: var(--secondary-text-color);
       margin-top: 2px;
+    }
+    .delta {
+      font-size: 0.75em;
+      margin-top: 2px;
+      letter-spacing: 0.02em;
+    }
+    .delta.up,
+    .delta.bad {
+      color: var(--error-color, #f44336);
+    }
+    .delta.down,
+    .delta.good {
+      color: var(--success-color, #4caf50);
     }
     .graph-wrapper {
       margin: 0 -4px;
@@ -167,6 +185,62 @@ export class FermentationTrackerCard extends LitElement {
       if (key !== this._historyCardKey) {
         this._createHistoryCard(chartType, entities, key);
       }
+    }
+
+    // Refetch 24h-ago values when the tracked entity set changes
+    if (this._gravityEntityId) {
+      const histKey = [this._gravityEntityId, ...this._tempEntityIds].join("|");
+      if (histKey !== this._historicalKey) {
+        this._historicalKey = histKey;
+        this._fetchHistoricalValues();
+      }
+    }
+  }
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    // Refresh historical baseline every 10 minutes
+    this._historicalRefreshTimer = setInterval(
+      () => this._fetchHistoricalValues(),
+      10 * 60 * 1000
+    );
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this._historicalRefreshTimer) {
+      clearInterval(this._historicalRefreshTimer);
+      this._historicalRefreshTimer = undefined;
+    }
+  }
+
+  private async _fetchHistoricalValues(): Promise<void> {
+    if (!this.hass || !this._gravityEntityId) return;
+    const entityIds = [this._gravityEntityId, ...this._tempEntityIds];
+    const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    try {
+      const result = await this.hass.callWS<
+        Record<string, Array<{ s: string; lu?: number }>>
+      >({
+        type: "history/history_during_period",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        entity_ids: entityIds,
+        minimal_response: true,
+        no_attributes: true,
+      });
+      const next: Record<string, number> = {};
+      for (const id of entityIds) {
+        const states = result[id];
+        if (states && states.length > 0) {
+          const value = parseFloat(states[0].s);
+          if (!isNaN(value)) next[id] = value;
+        }
+      }
+      this._historicalValues = next;
+    } catch {
+      // ignore — deltas just won't render
     }
   }
 
@@ -271,6 +345,25 @@ export class FermentationTrackerCard extends LitElement {
     const attenuation = og && gravityRaw ? calcAttenuation(og, gravityRaw) : undefined;
     const abv = og && gravityRaw ? calcAbv(og, gravityRaw) : undefined;
 
+    const gravity24h = this._gravityEntityId
+      ? this._historicalValues[this._gravityEntityId]
+      : undefined;
+    const gravityDelta =
+      gravityRaw !== undefined && gravity24h !== undefined
+        ? gravityRaw - gravity24h
+        : undefined;
+
+    const attenuation24h =
+      og && gravity24h ? calcAttenuation(og, gravity24h) : undefined;
+    const attenuationDelta =
+      attenuation !== undefined && attenuation24h !== undefined
+        ? attenuation - attenuation24h
+        : undefined;
+
+    const abv24h = og && gravity24h ? calcAbv(og, gravity24h) : undefined;
+    const abvDelta =
+      abv !== undefined && abv24h !== undefined ? abv - abv24h : undefined;
+
     const temperatureReadings = this._tempEntityIds
       .map((id) => {
         const state = this.hass.states[id];
@@ -294,6 +387,13 @@ export class FermentationTrackerCard extends LitElement {
       })
       .filter((r): r is { id: string; name: string; value: number; uom: string } => r !== null);
     const primaryTemp = temperatureReadings[0];
+    const primaryTemp24h = primaryTemp
+      ? this._historicalValues[primaryTemp.id]
+      : undefined;
+    const tempDelta =
+      primaryTemp && primaryTemp24h !== undefined
+        ? primaryTemp.value - primaryTemp24h
+        : undefined;
 
     return html`
       <ha-card>
@@ -307,6 +407,7 @@ export class FermentationTrackerCard extends LitElement {
               <span class="metric-value">
                 ${gravityRaw !== undefined && !isNaN(gravityRaw) ? gravityRaw.toFixed(4) : "—"}
               </span>
+              ${this._renderDelta(gravityDelta, 4, true)}
               ${gravitySecondary !== undefined
                 ? html`<span class="metric-secondary">${gravitySecondary}</span>`
                 : nothing}
@@ -318,6 +419,7 @@ export class FermentationTrackerCard extends LitElement {
                   ? `${primaryTemp.value.toFixed(1)} ${primaryTemp.uom}`
                   : "—"}
               </span>
+              ${this._renderDelta(tempDelta, 1, false)}
             </div>
           </div>
 
@@ -333,12 +435,14 @@ export class FermentationTrackerCard extends LitElement {
                     <span class="metric-value">
                       ${attenuation !== undefined ? `${attenuation.toFixed(1)}%` : "—"}
                     </span>
+                    ${this._renderDelta(attenuationDelta, 1, false, "%")}
                   </div>
                   <div class="metric abv">
                     <span class="metric-label">ABV</span>
                     <span class="metric-value">
                       ${abv !== undefined ? `${abv.toFixed(2)}%` : "—"}
                     </span>
+                    ${this._renderDelta(abvDelta, 2, false, "%")}
                   </div>
                 </div>
               `
@@ -364,6 +468,34 @@ export class FermentationTrackerCard extends LitElement {
         </div>
       </ha-card>
     `;
+  }
+
+  // For gravity (gravityIsBetterDown=true), a downward trend is "good" (green).
+  // For others, no semantic colour — just neutral up/down indicators.
+  private _renderDelta(
+    delta: number | undefined,
+    decimals: number,
+    gravityIsBetterDown: boolean,
+    suffix = ""
+  ) {
+    if (delta === undefined || isNaN(delta)) return nothing;
+    const threshold = Math.pow(10, -decimals) / 2;
+    if (Math.abs(delta) < threshold) return nothing;
+
+    const up = delta > 0;
+    const arrow = up ? "▲" : "▼";
+    const sign = up ? "+" : "−";
+    const goodForGravity = gravityIsBetterDown ? !up : up;
+    const cls = gravityIsBetterDown
+      ? goodForGravity
+        ? "delta good"
+        : "delta bad"
+      : up
+        ? "delta up"
+        : "delta down";
+    return html`<span class="${cls}">
+      ${arrow} ${sign}${Math.abs(delta).toFixed(decimals)}${suffix}
+    </span>`;
   }
 
   private _formatGravityConverted(
