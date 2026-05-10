@@ -19,7 +19,7 @@ export class FermentationTrackerCard extends LitElement {
   @state() private _gravityEntityId?: string;
   @state() private _tempEntityId?: string;
   @state() private _historyCard?: HTMLElement & { hass?: HomeAssistant };
-  private _historyCardEntityId?: string;
+  private _historyCardKey?: string;
 
   static styles = css`
     ha-card {
@@ -146,18 +146,23 @@ export class FermentationTrackerCard extends LitElement {
       this._historyCard.hass = this.hass;
     }
 
-    // (Re)create the history card when the gravity entity changes
-    if (
-      this._config?.show_graph !== false &&
-      this._gravityEntityId &&
-      this._gravityEntityId !== this._historyCardEntityId
-    ) {
-      this._createHistoryCard(this._gravityEntityId);
+    // (Re)create the history card when the tracked entities change
+    if (this._config?.show_graph !== false && this._gravityEntityId) {
+      const entities = [this._gravityEntityId, this._tempEntityId].filter(
+        (e): e is string => !!e
+      );
+      const key = entities.join("|");
+      if (key !== this._historyCardKey) {
+        this._createHistoryCard(entities, key);
+      }
     }
   }
 
-  private async _createHistoryCard(entityId: string): Promise<void> {
-    this._historyCardEntityId = entityId;
+  private async _createHistoryCard(
+    entities: string[],
+    key: string
+  ): Promise<void> {
+    this._historyCardKey = key;
     const helpers = await (
       window as unknown as {
         loadCardHelpers?: () => Promise<{
@@ -170,7 +175,7 @@ export class FermentationTrackerCard extends LitElement {
     if (!helpers) return;
     const card = helpers.createCardElement({
       type: "history-graph",
-      entities: [entityId],
+      entities,
       hours_to_show: 72,
     });
     card.hass = this.hass;
