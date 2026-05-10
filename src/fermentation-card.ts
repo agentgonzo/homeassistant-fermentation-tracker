@@ -18,6 +18,8 @@ export class FermentationTrackerCard extends LitElement {
   @state() private _config?: FermentationCardConfig;
   @state() private _gravityEntityId?: string;
   @state() private _tempEntityId?: string;
+  @state() private _historyCard?: HTMLElement & { hass?: HomeAssistant };
+  private _historyCardEntityId?: string;
 
   static styles = css`
     ha-card {
@@ -80,8 +82,13 @@ export class FermentationTrackerCard extends LitElement {
       color: var(--secondary-text-color);
       margin-top: 2px;
     }
-    ha-history-graph {
+    .graph-wrapper {
       margin: 0 -4px;
+    }
+    .graph-wrapper > * {
+      --ha-card-background: transparent;
+      --ha-card-box-shadow: none;
+      --ha-card-border-width: 0;
     }
     .unconfigured {
       display: flex;
@@ -133,6 +140,41 @@ export class FermentationTrackerCard extends LitElement {
         this._tempEntityId = findTemperatureEntity(this.hass, this._config.device_id);
       }
     }
+
+    // Forward hass updates to the embedded history card so it stays live
+    if (changedProps.has("hass") && this._historyCard) {
+      this._historyCard.hass = this.hass;
+    }
+
+    // (Re)create the history card when the gravity entity changes
+    if (
+      this._config?.show_graph !== false &&
+      this._gravityEntityId &&
+      this._gravityEntityId !== this._historyCardEntityId
+    ) {
+      this._createHistoryCard(this._gravityEntityId);
+    }
+  }
+
+  private async _createHistoryCard(entityId: string): Promise<void> {
+    this._historyCardEntityId = entityId;
+    const helpers = await (
+      window as unknown as {
+        loadCardHelpers?: () => Promise<{
+          createCardElement: (config: Record<string, unknown>) => HTMLElement & {
+            hass?: HomeAssistant;
+          };
+        }>;
+      }
+    ).loadCardHelpers?.();
+    if (!helpers) return;
+    const card = helpers.createCardElement({
+      type: "history-graph",
+      entities: [entityId],
+      hours_to_show: 72,
+    });
+    card.hass = this.hass;
+    this._historyCard = card;
   }
 
   protected render() {
@@ -221,15 +263,8 @@ export class FermentationTrackerCard extends LitElement {
               `
             : nothing}
 
-          ${this._config.show_graph !== false && this._gravityEntityId
-            ? html`
-                <ha-history-graph
-                  .hass=${this.hass}
-                  .entities=${[{ entity: this._gravityEntityId, name: "Gravity" }]}
-                  .hoursToShow=${72}
-                  .showNames=${false}
-                ></ha-history-graph>
-              `
+          ${this._config.show_graph !== false && this._historyCard
+            ? html`<div class="graph-wrapper">${this._historyCard}</div>`
             : nothing}
         </div>
       </ha-card>
