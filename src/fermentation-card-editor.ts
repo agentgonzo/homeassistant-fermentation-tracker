@@ -24,12 +24,18 @@ const computeLabel = (schema: { name: string }): string => {
       return "Show trend graph";
     case "show_delta_24h":
       return "Show 24h change indicators";
+    case "show_device_info":
+      return "Show additional device information";
     case "chart_type":
       return "Chart style";
     case "gravity_entity":
       return "Gravity entity (auto-detected if blank)";
     case "temperature_entity":
       return "Temperature entities (auto-detected if blank)";
+    case "signal_strength_entity":
+      return "Signal strength entity (auto-detected if blank)";
+    case "battery_entity":
+      return "Battery / voltage entity (auto-detected if blank)";
     default:
       return schema.name;
   }
@@ -106,6 +112,7 @@ export class FermentationCardEditor extends LitElement {
         },
         { name: "show_graph", selector: { boolean: {} } },
         { name: "show_delta_24h", selector: { boolean: {} } },
+        { name: "show_device_info", selector: { boolean: {} } },
         {
           name: "chart_type",
           selector: {
@@ -132,6 +139,22 @@ export class FermentationCardEditor extends LitElement {
             entity: {
               multiple: true,
               filter: { device_class: "temperature" },
+            },
+          },
+        },
+        {
+          name: "signal_strength_entity",
+          selector: {
+            entity: {
+              filter: { device_id: deviceId, device_class: "signal_strength" },
+            },
+          },
+        },
+        {
+          name: "battery_entity",
+          selector: {
+            entity: {
+              filter: { device_id: deviceId, device_class: "voltage" },
             },
           },
         }

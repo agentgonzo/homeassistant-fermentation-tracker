@@ -39,6 +39,9 @@ export interface FermentationCardConfig {
   name?: string;
   gravity_entity?: string;
   temperature_entity?: string[];
+  show_device_info?: boolean;
+  signal_strength_entity?: string;
+  battery_entity?: string;
   show_graph?: boolean;
   show_delta_24h?: boolean;
   chart_type?: "default" | "apex";

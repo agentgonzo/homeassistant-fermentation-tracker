@@ -66,3 +66,16 @@ export function findTemperatureEntity(
   );
   return byKeyword?.entity_id;
 }
+
+export function findEntityByDeviceClass(
+  hass: HomeAssistant,
+  deviceId: string,
+  deviceClass: string
+): string | undefined {
+  const match = getDeviceEntities(hass, deviceId)
+    .filter((e) => e.entity_id.startsWith("sensor."))
+    .find(
+      (e) => hass.states[e.entity_id]?.attributes["device_class"] === deviceClass
+    );
+  return match?.entity_id;
+}

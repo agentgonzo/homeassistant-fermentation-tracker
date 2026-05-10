@@ -1,7 +1,11 @@
 import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { HomeAssistant, FermentationCardConfig } from "./types";
-import { findGravityEntity, findTemperatureEntity } from "./utils/entity-discovery";
+import {
+  findGravityEntity,
+  findTemperatureEntity,
+  findEntityByDeviceClass,
+} from "./utils/entity-discovery";
 import { sgToPlato, sgToBrix, calcAttenuation, calcAbv } from "./utils/fermentation-math";
 
 declare global {
@@ -18,6 +22,8 @@ export class FermentationTrackerCard extends LitElement {
   @state() private _config?: FermentationCardConfig;
   @state() private _gravityEntityId?: string;
   @state() private _tempEntityIds: string[] = [];
+  @state() private _signalEntityId?: string;
+  @state() private _batteryEntityId?: string;
   @state() private _historyCard?: HTMLElement & { hass?: HomeAssistant };
   private _historyCardKey?: string;
 
@@ -51,7 +57,8 @@ export class FermentationTrackerCard extends LitElement {
     }
     .secondary-metrics {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+      grid-auto-flow: column;
       gap: 12px;
     }
     .metric {
@@ -150,6 +157,8 @@ export class FermentationTrackerCard extends LitElement {
     this._config = config;
     this._gravityEntityId = config.gravity_entity;
     this._tempEntityIds = config.temperature_entity ?? [];
+    this._signalEntityId = config.signal_strength_entity;
+    this._batteryEntityId = config.battery_entity;
   }
 
   public getCardSize(): number {
@@ -159,14 +168,21 @@ export class FermentationTrackerCard extends LitElement {
   protected willUpdate(changedProps: Map<string | symbol, unknown>): void {
     super.willUpdate(changedProps);
     if ((changedProps.has("hass") || changedProps.has("_config")) && this._config?.device_id) {
+      const deviceId = this._config.device_id;
       if (!this._config.gravity_entity) {
-        this._gravityEntityId = findGravityEntity(this.hass, this._config.device_id);
+        this._gravityEntityId = findGravityEntity(this.hass, deviceId);
       }
       if (!this._config.temperature_entity || this._config.temperature_entity.length === 0) {
-        const auto = findTemperatureEntity(this.hass, this._config.device_id);
+        const auto = findTemperatureEntity(this.hass, deviceId);
         this._tempEntityIds = auto ? [auto] : [];
       } else {
         this._tempEntityIds = this._config.temperature_entity;
+      }
+      if (!this._config.signal_strength_entity) {
+        this._signalEntityId = findEntityByDeviceClass(this.hass, deviceId, "signal_strength");
+      }
+      if (!this._config.battery_entity) {
+        this._batteryEntityId = findEntityByDeviceClass(this.hass, deviceId, "voltage");
       }
     }
 
@@ -179,6 +195,10 @@ export class FermentationTrackerCard extends LitElement {
     if (this._config?.show_graph !== false && this._gravityEntityId) {
       const chartType = this._config?.chart_type ?? "default";
       const entities = [this._gravityEntityId, ...this._tempEntityIds];
+      if (this._config?.show_device_info) {
+        if (this._signalEntityId) entities.push(this._signalEntityId);
+        if (this._batteryEntityId) entities.push(this._batteryEntityId);
+      }
       const key = `${chartType}::${entities.join("|")}`;
       if (key !== this._historyCardKey) {
         this._createHistoryCard(chartType, entities, key);
@@ -262,7 +282,7 @@ export class FermentationTrackerCard extends LitElement {
 
     const config =
       chartType === "apex"
-        ? this._buildApexConfig(entities)
+        ? this._buildApexConfig()
         : { type: "history-graph", entities, hours_to_show: 72 };
 
     const card = helpers.createCardElement(config);
@@ -270,14 +290,13 @@ export class FermentationTrackerCard extends LitElement {
     this._historyCard = card;
   }
 
-  private _buildApexConfig(entities: string[]): Record<string, unknown> {
-    const [gravityEntity, ...tempEntities] = entities;
+  private _buildApexConfig(): Record<string, unknown> {
     const series: Record<string, unknown>[] = [];
     const yaxis: Record<string, unknown>[] = [];
 
-    if (gravityEntity) {
+    if (this._gravityEntityId) {
       series.push({
-        entity: gravityEntity,
+        entity: this._gravityEntityId,
         name: "Gravity",
         yaxis_id: "gravity",
         stroke_width: 2,
@@ -288,8 +307,8 @@ export class FermentationTrackerCard extends LitElement {
         apex_config: { tickAmount: 4 },
       });
     }
-    if (tempEntities.length > 0) {
-      tempEntities.forEach((entity) => {
+    if (this._tempEntityIds.length > 0) {
+      this._tempEntityIds.forEach((entity) => {
         series.push({
           entity,
           yaxis_id: "temperature",
@@ -302,6 +321,36 @@ export class FermentationTrackerCard extends LitElement {
         opposite: true,
         apex_config: { tickAmount: 4 },
       });
+    }
+    if (this._config?.show_device_info) {
+      if (this._signalEntityId) {
+        series.push({
+          entity: this._signalEntityId,
+          name: "Signal",
+          yaxis_id: "signal",
+          stroke_width: 1,
+          opacity: 0.5,
+        });
+        yaxis.push({
+          id: "signal",
+          decimals: 0,
+          show: false,
+        });
+      }
+      if (this._batteryEntityId) {
+        series.push({
+          entity: this._batteryEntityId,
+          name: "Battery",
+          yaxis_id: "battery",
+          stroke_width: 1,
+          opacity: 0.5,
+        });
+        yaxis.push({
+          id: "battery",
+          decimals: 2,
+          show: false,
+        });
+      }
     }
 
     return {
@@ -386,6 +435,24 @@ export class FermentationTrackerCard extends LitElement {
       })
       .filter((r): r is { id: string; name: string; value: number; uom: string } => r !== null);
     const primaryTemp = temperatureReadings[0];
+
+    const signalState = this._signalEntityId
+      ? this.hass.states[this._signalEntityId]
+      : undefined;
+    const signalValue = signalState ? parseFloat(signalState.state) : undefined;
+    const signalUom =
+      typeof signalState?.attributes["unit_of_measurement"] === "string"
+        ? signalState.attributes["unit_of_measurement"]
+        : "dB";
+
+    const batteryState = this._batteryEntityId
+      ? this.hass.states[this._batteryEntityId]
+      : undefined;
+    const batteryValue = batteryState ? parseFloat(batteryState.state) : undefined;
+    const batteryUom =
+      typeof batteryState?.attributes["unit_of_measurement"] === "string"
+        ? batteryState.attributes["unit_of_measurement"]
+        : "V";
     const primaryTemp24h = primaryTemp
       ? this._historicalValues[primaryTemp.id]
       : undefined;
@@ -442,6 +509,29 @@ export class FermentationTrackerCard extends LitElement {
                       ${abv !== undefined ? `${abv.toFixed(2)}%` : "—"}
                     </span>
                     ${this._renderDelta(abvDelta, 2, "up-good", "%")}
+                  </div>
+                </div>
+              `
+            : nothing}
+
+          ${this._config.show_device_info
+            ? html`
+                <div class="secondary-metrics">
+                  <div class="metric">
+                    <span class="metric-label">Signal</span>
+                    <span class="metric-value">
+                      ${signalValue !== undefined && !isNaN(signalValue)
+                        ? `${signalValue.toFixed(0)} ${signalUom}`
+                        : "—"}
+                    </span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-label">Battery</span>
+                    <span class="metric-value">
+                      ${batteryValue !== undefined && !isNaN(batteryValue)
+                        ? `${batteryValue.toFixed(2)} ${batteryUom}`
+                        : "—"}
+                    </span>
                   </div>
                 </div>
               `
