@@ -31,12 +31,7 @@ export class FermentationTrackerCard extends LitElement {
       font-weight: 500;
       color: var(--primary-text-color);
     }
-    .card-header .device-model {
-      font-size: 0.8em;
-      color: var(--secondary-text-color);
-      margin-top: 2px;
-    }
-    .card-content {
+.card-content {
       padding: 16px;
       display: flex;
       flex-direction: column;
@@ -183,7 +178,6 @@ export class FermentationTrackerCard extends LitElement {
       <ha-card>
         <div class="card-header">
           <div class="name">${cardTitle}</div>
-          ${device?.model ? html`<div class="device-model">${device.model}</div>` : nothing}
         </div>
         <div class="card-content">
           <div class="primary-metrics">
