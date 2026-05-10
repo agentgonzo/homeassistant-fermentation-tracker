@@ -1,6 +1,6 @@
 {
   "name": "Fermentation Tracker Card",
-  "filename": "dist/fermentation-tracker-card.js",
+  "filename": "fermentation-tracker-card.js",
   "render_readme": true,
   "homeassistant": "2024.8.0"
 }

@@ -5,7 +5,7 @@ import terser from "@rollup/plugin-terser";
 export default {
   input: "src/index.ts",
   output: {
-    file: "dist/fermentation-tracker-card.js",
+    file: "fermentation-tracker-card.js",
     format: "es",
     sourcemap: false,
     inlineDynamicImports: true,
