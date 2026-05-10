@@ -46,6 +46,13 @@ export class FermentationTrackerCard extends LitElement {
   private static readonly AUTO_DETECT_GAP_HOURS = 6;
   // Fallback range when auto detection finds no gap
   private static readonly AUTO_FALLBACK_HOURS = 7 * 24;
+  // After the gap, the first ~hour of iSpindel readings are unstable while the
+  // hydrometer settles into the wort. We skip them by finding the first window
+  // of consecutive readings where the SG is stable to within this tolerance.
+  private static readonly STABILITY_TOLERANCE_SG = 0.005;
+  private static readonly STABILITY_WINDOW_SIZE = 3;
+  // Cap on how far past the raw start we'll look for stability before giving up
+  private static readonly STABILITY_MAX_OFFSET_HOURS = 4;
 
   static styles = css`
     ha-card {
@@ -292,6 +299,40 @@ export class FermentationTrackerCard extends LitElement {
     }
   }
 
+  // Walks forward from rawStartIdx looking for the first window of
+  // STABILITY_WINDOW_SIZE consecutive readings whose values are all within
+  // STABILITY_TOLERANCE_SG of each other — that's where the iSpindel has
+  // settled and the OG reading is meaningful.
+  private _findStableStart(
+    points: { t: number; v: number }[],
+    rawStartIdx: number
+  ): number {
+    const tolerance = FermentationTrackerCard.STABILITY_TOLERANCE_SG;
+    const windowSize = FermentationTrackerCard.STABILITY_WINDOW_SIZE;
+    const maxOffsetMs =
+      FermentationTrackerCard.STABILITY_MAX_OFFSET_HOURS * 60 * 60 * 1000;
+    const rawStartMs = points[rawStartIdx].t;
+    const lastIdx = Math.min(points.length - windowSize, points.length - 1);
+
+    for (let i = rawStartIdx; i <= lastIdx; i++) {
+      // Bail out if we've drifted too far past the raw start without finding
+      // stability — fall back to the raw start so we don't lose the chart.
+      if (points[i].t - rawStartMs > maxOffsetMs) break;
+
+      let min = points[i].v;
+      let max = points[i].v;
+      for (let k = 1; k < windowSize && i + k < points.length; k++) {
+        const v = points[i + k].v;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      if (max - min <= tolerance) {
+        return points[i].t;
+      }
+    }
+    return rawStartMs;
+  }
+
   private async _detectAutoRangeHours(): Promise<number> {
     if (!this.hass || !this._gravityEntityId) {
       return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
@@ -315,28 +356,35 @@ export class FermentationTrackerCard extends LitElement {
       if (states.length < 2) {
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
-      // Timestamps from HA WS are seconds (float). Normalise to ms.
-      const timestamps = states
-        .map((s) => (typeof s.lu === "number" ? s.lu : 0))
-        .filter((t) => t > 0)
-        .map((t) => (t < 1e12 ? t * 1000 : t));
+      // Build parallel arrays of timestamp (ms) and SG value, ignoring entries
+      // we can't parse.
+      const points: { t: number; v: number }[] = [];
+      for (const s of states) {
+        const tRaw = typeof s.lu === "number" ? s.lu : 0;
+        if (tRaw <= 0) continue;
+        const t = tRaw < 1e12 ? tRaw * 1000 : tRaw;
+        const v = parseFloat(s.s);
+        if (isNaN(v)) continue;
+        points.push({ t, v });
+      }
+      if (points.length < 2) {
+        return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+      }
 
       const gapMs =
         FermentationTrackerCard.AUTO_DETECT_GAP_HOURS * 60 * 60 * 1000;
-      // Walk backwards looking for the most recent 6h+ gap.
-      // Start of fermentation = first reading AFTER the gap.
-      for (let i = timestamps.length - 1; i > 0; i--) {
-        if (timestamps[i] - timestamps[i - 1] > gapMs) {
-          const startMs = timestamps[i];
-          const hoursSince = (Date.now() - startMs) / 3600000;
-          // Round up to nearest hour, minimum 1
-          return Math.max(1, Math.ceil(hoursSince));
+      // Find the index of the first reading AFTER the most recent 6h+ gap.
+      let rawStartIdx = 0;
+      for (let i = points.length - 1; i > 0; i--) {
+        if (points[i].t - points[i - 1].t > gapMs) {
+          rawStartIdx = i;
+          break;
         }
       }
-      // No gap found — use the full available range
-      const earliest = timestamps[0];
-      const hoursSinceEarliest = (Date.now() - earliest) / 3600000;
-      return Math.max(1, Math.ceil(hoursSinceEarliest));
+
+      const stableStartMs = this._findStableStart(points, rawStartIdx);
+      const hoursSince = (Date.now() - stableStartMs) / 3600000;
+      return Math.max(1, Math.ceil(hoursSince));
     } catch (e) {
       console.error("[fermentation-tracker] auto range detection failed", e);
       return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
