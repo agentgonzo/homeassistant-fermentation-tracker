@@ -61,6 +61,20 @@ export class FermentationCardEditor extends LitElement {
   }
 
   protected async firstUpdated(): Promise<void> {
+    // Force HA to load picker components if they aren't registered yet.
+    // loadCardHelpers transitively imports ha-device-picker / ha-entity-picker.
+    if (!customElements.get("ha-device-picker")) {
+      const helpers = await (window as unknown as {
+        loadCardHelpers?: () => Promise<unknown>;
+      }).loadCardHelpers?.();
+      if (helpers) {
+        await Promise.race([
+          customElements.whenDefined("ha-device-picker"),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
+      }
+    }
+
     const result = await this.hass.callWS<ConfigEntryResult>({
       type: "config_entries/get",
     });
