@@ -18,8 +18,6 @@ const computeLabel = (schema: { name: string }): string => {
       return "Card title (optional)";
     case "gravity_unit":
       return "Also show gravity as";
-    case "original_gravity":
-      return "Original Gravity (SG)";
     case "show_graph":
       return "Show trend graph";
     case "show_delta_24h":
@@ -102,12 +100,6 @@ export class FermentationCardEditor extends LitElement {
                 { value: "Brix", label: "+ Brix (°Bx)" },
               ],
             },
-          },
-        },
-        {
-          name: "original_gravity",
-          selector: {
-            number: { min: 0.99, max: 1.2, step: 0.001, mode: "box" },
           },
         },
         { name: "show_graph", selector: { boolean: {} } },

@@ -46,5 +46,4 @@ export interface FermentationCardConfig {
   show_delta_24h?: boolean;
   chart_type?: "default" | "apex";
   gravity_unit?: "SG" | "Plato" | "Brix";
-  original_gravity?: number;
 }

@@ -27,10 +27,14 @@ export class FermentationTrackerCard extends LitElement {
   @state() private _historyCard?: HTMLElement & { hass?: HomeAssistant };
   private _historyCardKey?: string;
 
-  // Cached state value from ~24h ago, keyed by entity_id
+  // Cached state value from ~24h ago, keyed by entity_id (used for delta arrows)
   @state() private _historicalValues: Record<string, number> = {};
+  // Gravity at the start of the graph window (~72h ago) — used as OG
+  @state() private _originalGravity?: number;
   private _historicalKey?: string;
   private _historicalRefreshTimer?: ReturnType<typeof setInterval>;
+
+  private static readonly GRAPH_WINDOW_HOURS = 72;
 
   static styles = css`
     ha-card {
@@ -205,8 +209,8 @@ export class FermentationTrackerCard extends LitElement {
       }
     }
 
-    // Refetch 24h-ago values when the tracked entity set changes
-    if (this._gravityEntityId && this._config?.show_delta_24h !== false) {
+    // Refetch historical values (OG + 24h delta baseline) when entities change
+    if (this._gravityEntityId) {
       const histKey = [this._gravityEntityId, ...this._tempEntityIds].join("|");
       if (histKey !== this._historicalKey) {
         this._historicalKey = histKey;
@@ -234,7 +238,12 @@ export class FermentationTrackerCard extends LitElement {
 
   private async _fetchHistoricalValues(): Promise<void> {
     if (!this.hass || !this._gravityEntityId) return;
+
+    // OG (gravity at start of graph window) drives attenuation/ABV — always fetch.
+    await this._fetchOriginalGravity();
+
     if (this._config?.show_delta_24h === false) return;
+
     const entityIds = [this._gravityEntityId, ...this._tempEntityIds];
     const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const end = new Date(start.getTime() + 60 * 60 * 1000);
@@ -263,6 +272,35 @@ export class FermentationTrackerCard extends LitElement {
     }
   }
 
+  private async _fetchOriginalGravity(): Promise<void> {
+    if (!this.hass || !this._gravityEntityId) return;
+    const start = new Date(
+      Date.now() - FermentationTrackerCard.GRAPH_WINDOW_HOURS * 60 * 60 * 1000
+    );
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    try {
+      const result = await this.hass.callWS<
+        Record<string, Array<{ s: string }>>
+      >({
+        type: "history/history_during_period",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        entity_ids: [this._gravityEntityId],
+        minimal_response: true,
+        no_attributes: true,
+      });
+      const states = result[this._gravityEntityId];
+      if (states && states.length > 0) {
+        const value = parseFloat(states[0].s);
+        this._originalGravity = isNaN(value) ? undefined : value;
+      } else {
+        this._originalGravity = undefined;
+      }
+    } catch (e) {
+      console.error("[fermentation-tracker] failed to fetch OG", e);
+    }
+  }
+
   private async _createHistoryCard(
     chartType: "default" | "apex",
     entities: string[],
@@ -283,7 +321,7 @@ export class FermentationTrackerCard extends LitElement {
     const config =
       chartType === "apex"
         ? this._buildApexConfig()
-        : { type: "history-graph", entities, hours_to_show: 72 };
+        : { type: "history-graph", entities, hours_to_show: FermentationTrackerCard.GRAPH_WINDOW_HOURS };
 
     const card = helpers.createCardElement(config);
     card.hass = this.hass;
@@ -359,7 +397,7 @@ export class FermentationTrackerCard extends LitElement {
 
     return {
       type: "custom:apexcharts-card",
-      graph_span: "72h",
+      graph_span: `${FermentationTrackerCard.GRAPH_WINDOW_HOURS}h`,
       header: { show: false },
       yaxis,
       series,
@@ -393,7 +431,7 @@ export class FermentationTrackerCard extends LitElement {
     const displayUnit = this._config.gravity_unit;
     const gravitySecondary = this._formatGravityConverted(gravityRaw, displayUnit);
 
-    const og = this._config.original_gravity;
+    const og = this._originalGravity;
     const attenuation = og && gravityRaw ? calcAttenuation(og, gravityRaw) : undefined;
     const abv = og && gravityRaw ? calcAbv(og, gravityRaw) : undefined;
 
