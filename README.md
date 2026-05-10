@@ -1,5 +1,8 @@
 # Fermentation Tracker Card
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+![GitHub release](https://img.shields.io/github/v/release/agentgonzo/homeassistant-fermentation-tracker)
+
 A Home Assistant Lovelace card for monitoring fermentation hydrometers such as the iSpindel, Tilt Hydrometer, and RAPT Pill.
 
 ## Features
