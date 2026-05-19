@@ -182,7 +182,10 @@ export class FermentationCardEditor extends LitElement {
           name: "battery_entity",
           selector: {
             entity: {
-              filter: { device_id: deviceId, device_class: "voltage" },
+              filter: [
+                { device_id: deviceId, device_class: "battery" },
+                { device_id: deviceId, device_class: "voltage" },
+              ],
             },
           },
         }

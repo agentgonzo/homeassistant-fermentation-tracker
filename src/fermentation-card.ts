@@ -276,7 +276,9 @@ export class FermentationTrackerCard extends LitElement {
         this._signalEntityId = findEntityByDeviceClass(this.hass, deviceId, "signal_strength");
       }
       if (!this._config.battery_entity) {
-        this._batteryEntityId = findEntityByDeviceClass(this.hass, deviceId, "voltage");
+        this._batteryEntityId =
+          findEntityByDeviceClass(this.hass, deviceId, "battery") ??
+          findEntityByDeviceClass(this.hass, deviceId, "voltage");
       }
     }
 
