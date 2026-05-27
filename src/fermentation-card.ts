@@ -157,6 +157,13 @@ export class FermentationTrackerCard extends LitElement {
       flex-direction: column;
       gap: 2px;
     }
+    .metric.clickable {
+      cursor: pointer;
+    }
+    .metric.clickable:hover {
+      background: var(--secondary-background-color);
+      filter: brightness(0.9);
+    }
     .metric-label {
       font-size: 0.75em;
       color: var(--secondary-text-color);
@@ -990,7 +997,7 @@ export class FermentationTrackerCard extends LitElement {
             : nothing}
 
           <div class="primary-metrics">
-            <div class="metric gravity">
+            <div class="metric gravity${this._gravityEntityId ? " clickable" : ""}" @click=${() => this._showMoreInfo(this._gravityEntityId)}>
               <span class="metric-label">Gravity</span>
               <div class="metric-row">
                 <span class="metric-value">
@@ -1002,7 +1009,7 @@ export class FermentationTrackerCard extends LitElement {
                 ? html`<span class="metric-secondary">${gravitySecondary}</span>`
                 : nothing}
             </div>
-            <div class="metric temperature">
+            <div class="metric temperature${this._tempEntityIds[0] ? " clickable" : ""}" @click=${() => this._showMoreInfo(this._tempEntityIds[0])}>
               <span class="metric-label">Temperature</span>
               <div class="metric-row">
                 <span class="metric-value">
@@ -1047,7 +1054,7 @@ export class FermentationTrackerCard extends LitElement {
           ${this._config.show_device_info
             ? html`
                 <div class="secondary-metrics">
-                  <div class="metric">
+                  <div class="metric${this._signalEntityId ? " clickable" : ""}" @click=${() => this._showMoreInfo(this._signalEntityId)}>
                     <span class="metric-label">Signal</span>
                     <div class="metric-row">
                       <span class="metric-value">
@@ -1058,7 +1065,7 @@ export class FermentationTrackerCard extends LitElement {
                       ${this._renderDelta(signalDelta, 0, "neutral", ` ${signalUom}`)}
                     </div>
                   </div>
-                  <div class="metric">
+                  <div class="metric${this._batteryEntityId ? " clickable" : ""}" @click=${() => this._showMoreInfo(this._batteryEntityId)}>
                     <span class="metric-label">Battery</span>
                     <div class="metric-row">
                       <span class="metric-value">
@@ -1104,6 +1111,17 @@ export class FermentationTrackerCard extends LitElement {
   //   "down-good": gravity — falling SG is fermentation progress (green)
   //   "up-good":   attenuation, ABV — rising values are progress (green)
   //   "neutral":   temperature — no semantic, no colour
+  private _showMoreInfo(entityId: string | undefined) {
+    if (!entityId) return;
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId },
+      })
+    );
+  }
+
   private _renderDelta(
     delta: number | undefined,
     decimals: number,
