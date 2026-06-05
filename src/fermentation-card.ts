@@ -190,6 +190,18 @@ export class FermentationTrackerCard extends LitElement {
     .metric.abv .metric-value {
       color: var(--success-color, #4caf50);
     }
+    .metric-value.battery-ok {
+      color: var(--success-color, #4caf50);
+    }
+    .metric-value.battery-warn {
+      color: var(--warning-color, #ffc107);
+    }
+    .metric-value.battery-low {
+      color: #ff9800;
+    }
+    .metric-value.battery-crit {
+      color: var(--error-color, #f44336);
+    }
     .metric-secondary {
       font-size: 0.85em;
       color: var(--secondary-text-color);
@@ -1068,7 +1080,7 @@ export class FermentationTrackerCard extends LitElement {
                   <div class="metric${this._batteryEntityId ? " clickable" : ""}" @click=${() => this._showMoreInfo(this._batteryEntityId)}>
                     <span class="metric-label">Battery</span>
                     <div class="metric-row">
-                      <span class="metric-value">
+                      <span class="metric-value ${this._batteryColorClass(batteryValue, batteryUom)}">
                         ${batteryValue !== undefined && !isNaN(batteryValue)
                           ? `${batteryValue.toFixed(2)} ${batteryUom}`
                           : "—"}
@@ -1120,6 +1132,14 @@ export class FermentationTrackerCard extends LitElement {
         detail: { entityId },
       })
     );
+  }
+
+  private _batteryColorClass(value: number | undefined, uom: string): string {
+    if (value === undefined || isNaN(value) || uom !== "%") return "";
+    if (value >= 60) return "battery-ok";
+    if (value >= 30) return "battery-warn";
+    if (value >= 15) return "battery-low";
+    return "battery-crit";
   }
 
   private _renderDelta(
