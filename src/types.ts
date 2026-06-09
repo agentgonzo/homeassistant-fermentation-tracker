@@ -22,6 +22,7 @@ export interface HassEntity {
   entity_id: string;
   state: string;
   attributes: Record<string, unknown>;
+  last_updated: string;
 }
 
 export interface HomeAssistant {

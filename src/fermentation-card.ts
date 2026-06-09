@@ -254,6 +254,30 @@ export class FermentationTrackerCard extends LitElement {
       margin: 0;
       font-size: 0.9em;
     }
+    .no-activity {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      gap: 8px;
+      text-align: center;
+    }
+    .no-activity ha-icon {
+      --mdc-icon-size: 48px;
+      opacity: 0.5;
+      color: var(--secondary-text-color);
+    }
+    .no-activity-title {
+      margin: 0;
+      font-size: 1.1em;
+      color: var(--primary-text-color);
+    }
+    .no-activity-detail {
+      margin: 0;
+      font-size: 0.9em;
+      color: var(--secondary-text-color);
+    }
   `;
 
   public static async getConfigElement() {
@@ -881,6 +905,35 @@ export class FermentationTrackerCard extends LitElement {
     const deviceName = device?.name_by_user ?? device?.name ?? "Fermentation Vessel";
     const cardTitle = this._config.name ?? deviceName;
 
+    // "No activity" placeholder: if the gravity entity exists but hasn't been
+    // updated in over 24h, the device has likely gone offline. Hide all metrics
+    // so stale readings don't masquerade as current.
+    const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+    const gravityLastUpdated = gravityState?.last_updated
+      ? new Date(gravityState.last_updated).getTime()
+      : undefined;
+    const isStale =
+      gravityState !== undefined &&
+      gravityLastUpdated !== undefined &&
+      Date.now() - gravityLastUpdated > STALE_THRESHOLD_MS;
+
+    if (isStale) {
+      return html`
+        <ha-card>
+          <div class="card-header">
+            <div class="name">${cardTitle}</div>
+          </div>
+          <div class="no-activity">
+            <ha-icon icon="mdi:sleep"></ha-icon>
+            <p class="no-activity-title">No activity</p>
+            <p class="no-activity-detail">
+              Last reading ${this._formatRelativeTime(gravityLastUpdated!)}
+            </p>
+          </div>
+        </ha-card>
+      `;
+    }
+
     const displayUnit = this._config.gravity_unit;
     const gravitySecondary = this._formatGravityConverted(gravityRaw, displayUnit);
 
@@ -1132,6 +1185,19 @@ export class FermentationTrackerCard extends LitElement {
         detail: { entityId },
       })
     );
+  }
+
+  private _formatRelativeTime(timestampMs: number): string {
+    const diffMs = Date.now() - timestampMs;
+    const minutes = Math.floor(diffMs / 60_000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const weeks = Math.floor(days / 7);
+    if (weeks >= 2) return `${weeks} weeks ago`;
+    if (days >= 2) return `${days} days ago`;
+    if (hours >= 1) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+    if (minutes >= 1) return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+    return "just now";
   }
 
   private _batteryColorClass(value: number | undefined, uom: string): string {
