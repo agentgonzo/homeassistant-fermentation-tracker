@@ -39,8 +39,16 @@ export class FermentationTrackerCard extends LitElement {
   private _historicalKey?: string;
   private _historicalRefreshTimer?: ReturnType<typeof setInterval>;
 
-  // Resolved hours for the current view (graph + OG). Recomputed when config changes.
+  // Resolved hours for the current view (graph width only — rounded up to a
+  // whole hour for the chart config). Recomputed when config changes.
   @state() private _resolvedRangeHours = 72;
+  // Precise epoch ms of the resolved fermentation start. OG must anchor to
+  // this exact instant rather than reconstructing it from the rounded
+  // _resolvedRangeHours above — re-deriving from rounded hours can land up to
+  // ~1h before the real detected/configured start, which for auto mode risks
+  // picking up one of the pre-stability "settling" readings that
+  // filter_settling/stability-detection specifically exist to exclude.
+  private _resolvedStartMs?: number;
   private _rangeKey?: string;
 
   // Hard ceiling for auto-detection lookback (also the fallback if no gap is found)
@@ -390,31 +398,34 @@ export class FermentationTrackerCard extends LitElement {
 
   private async _resolveTimeRange(): Promise<void> {
     const range = this._config?.time_range ?? "auto";
+    const fallbackStartMs = () =>
+      Date.now() - FermentationTrackerCard.AUTO_FALLBACK_HOURS * 3600000;
 
-    let hours: number;
+    let startMs: number;
     if (range === "auto") {
-      hours = await this._detectAutoRangeHours();
+      startMs = await this._detectAutoRangeStart();
     } else {
       // "now" and "custom" both anchor to an absolute start timestamp — the
       // window grows from there up to the present, rather than being a
       // fixed-size lookback.
-      const startMs = this._config?.fermentation_start
+      const configuredStart = this._config?.fermentation_start
         ? new Date(this._config.fermentation_start).getTime()
         : NaN;
-      if (isNaN(startMs)) {
+      if (isNaN(configuredStart)) {
         console.warn(
-          `[fermentation-tracker:range] time_range="${range}" but fermentation_start is missing or unparseable ("${this._config?.fermentation_start}") — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h.`
+          `[fermentation-tracker:range] time_range="${range}" but fermentation_start is missing or unparseable ("${this._config?.fermentation_start}") — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h ago.`
         );
       }
-      hours = isNaN(startMs)
-        ? FermentationTrackerCard.AUTO_FALLBACK_HOURS
-        : Math.max(1, Math.ceil((Date.now() - startMs) / 3600000));
+      startMs = isNaN(configuredStart) ? fallbackStartMs() : configuredStart;
     }
 
+    const hours = Math.max(1, Math.ceil((Date.now() - startMs) / 3600000));
+
     console.info(
-      `[fermentation-tracker:range] mode=${range} resolvedHours=${hours} → fermentation start ≈ ${new Date(Date.now() - hours * 3600000).toISOString()}`
+      `[fermentation-tracker:range] mode=${range} fermentation start=${new Date(startMs).toISOString()} → resolvedHours=${hours} (chart width, rounded up)`
     );
 
+    this._resolvedStartMs = startMs;
     if (hours !== this._resolvedRangeHours) {
       this._resolvedRangeHours = hours;
       // Recreate the graph with the new span
@@ -493,9 +504,11 @@ export class FermentationTrackerCard extends LitElement {
     return rawStartMs;
   }
 
-  private async _detectAutoRangeHours(): Promise<number> {
+  private async _detectAutoRangeStart(): Promise<number> {
+    const fallback = () =>
+      Date.now() - FermentationTrackerCard.AUTO_FALLBACK_HOURS * 3600000;
     if (!this.hass || !this._gravityEntityId) {
-      return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+      return fallback();
     }
     const lookbackMs =
       FermentationTrackerCard.AUTO_DETECT_LOOKBACK_HOURS * 60 * 60 * 1000;
@@ -515,9 +528,9 @@ export class FermentationTrackerCard extends LitElement {
       const states = result[this._gravityEntityId] ?? [];
       if (states.length < 2) {
         console.warn(
-          `[fermentation-tracker:autoDetect] only ${states.length} history state(s) found in the last ${FermentationTrackerCard.AUTO_DETECT_LOOKBACK_HOURS}h lookback — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h. This usually means the entity is new or Home Assistant's recorder retention (recorder.purge_keep_days) is shorter than the lookback.`
+          `[fermentation-tracker:autoDetect] only ${states.length} history state(s) found in the last ${FermentationTrackerCard.AUTO_DETECT_LOOKBACK_HOURS}h lookback — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h ago. This usually means the entity is new or Home Assistant's recorder retention (recorder.purge_keep_days) is shorter than the lookback.`
         );
-        return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+        return fallback();
       }
 
       // Parse readings into plausible (in-range) and junk (out-of-range)
@@ -546,9 +559,9 @@ export class FermentationTrackerCard extends LitElement {
       }
       if (plausible.length < 2) {
         console.warn(
-          `[fermentation-tracker:autoDetect] found ${states.length} history states but only ${plausible.length} plausible SG reading(s) (${FermentationTrackerCard.MIN_PLAUSIBLE_SG}–${FermentationTrackerCard.MAX_PLAUSIBLE_SG}, ${junkTimes.length} rejected as junk) — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h.`
+          `[fermentation-tracker:autoDetect] found ${states.length} history states but only ${plausible.length} plausible SG reading(s) (${FermentationTrackerCard.MIN_PLAUSIBLE_SG}–${FermentationTrackerCard.MAX_PLAUSIBLE_SG}, ${junkTimes.length} rejected as junk) — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h ago.`
         );
-        return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+        return fallback();
       }
 
       // Drop plausible readings that have a junk reading within ±60 minutes.
@@ -596,12 +609,12 @@ export class FermentationTrackerCard extends LitElement {
       const stableStartMs = this._findStableStart(workingPoints, rawStartIdx);
       const hoursSince = (Date.now() - stableStartMs) / 3600000;
       console.info(
-        `[fermentation-tracker:autoDetect] ${states.length} states → ${plausible.length} plausible (${junkTimes.length} junk) → ${cleanFromJunk.length} after settling filter → ${workingPoints.length} after isolation filter. Gap-based start idx=${rawStartIdx}/${workingPoints.length - 1}, stable start=${new Date(stableStartMs).toISOString()} (${hoursSince.toFixed(1)}h ago).`
+        `[fermentation-tracker:autoDetect] ${states.length} states → ${plausible.length} plausible (${junkTimes.length} junk) → ${cleanFromJunk.length} after settling filter (filter_settling=${!!this._config?.filter_settling}) → ${workingPoints.length} after isolation filter. Gap-based start idx=${rawStartIdx}/${workingPoints.length - 1}, stable start=${new Date(stableStartMs).toISOString()} (${hoursSince.toFixed(1)}h ago).`
       );
-      return Math.max(1, Math.ceil(hoursSince));
+      return stableStartMs;
     } catch (e) {
-      console.error("[fermentation-tracker] auto range detection failed", e);
-      return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
+      console.error("[fermentation-tracker:autoDetect] auto range detection failed", e);
+      return fallback();
     }
   }
 
@@ -611,8 +624,10 @@ export class FermentationTrackerCard extends LitElement {
     // time range so a "now"/"custom" start keeps growing towards the present
     // instead of freezing at whatever width it had on first load.
     this._historicalRefreshTimer = setInterval(() => {
-      void this._resolveTimeRange();
-      this._fetchHistoricalValues();
+      void (async () => {
+        await this._resolveTimeRange();
+        await this._fetchHistoricalValues();
+      })();
     }, 10 * 60 * 1000);
   }
 
@@ -668,8 +683,12 @@ export class FermentationTrackerCard extends LitElement {
 
   private async _fetchOriginalGravity(): Promise<void> {
     if (!this.hass || !this._gravityEntityId) return;
+    // Anchor to the precise resolved start, not a reconstruction from the
+    // rounded _resolvedRangeHours (see _resolvedStartMs comment) — otherwise
+    // this can land up to ~1h before the real start and pick up a
+    // pre-stability "settling" reading instead of the properly filtered one.
     const start = new Date(
-      Date.now() - this._resolvedRangeHours * 60 * 60 * 1000
+      this._resolvedStartMs ?? Date.now() - this._resolvedRangeHours * 60 * 60 * 1000
     );
     const end = new Date();
     try {
