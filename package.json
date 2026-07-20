@@ -1,6 +1,6 @@
 {
   "name": "fermentation-tracker-card",
-  "version": "1.0.0",
+  "version": "1.0.10",
   "private": true,
   "description": "Home Assistant Lovelace card for fermentation tracking (iSpindel, Tilt, etc.)",
   "scripts": {
@@ -13,6 +13,7 @@
     "memoize-one": "^6.0.0"
   },
   "devDependencies": {
+    "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.1.6",
