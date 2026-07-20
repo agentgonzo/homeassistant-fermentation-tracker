@@ -401,10 +401,19 @@ export class FermentationTrackerCard extends LitElement {
       const startMs = this._config?.fermentation_start
         ? new Date(this._config.fermentation_start).getTime()
         : NaN;
+      if (isNaN(startMs)) {
+        console.warn(
+          `[fermentation-tracker:range] time_range="${range}" but fermentation_start is missing or unparseable ("${this._config?.fermentation_start}") — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h.`
+        );
+      }
       hours = isNaN(startMs)
         ? FermentationTrackerCard.AUTO_FALLBACK_HOURS
         : Math.max(1, Math.ceil((Date.now() - startMs) / 3600000));
     }
+
+    console.info(
+      `[fermentation-tracker:range] mode=${range} resolvedHours=${hours} → fermentation start ≈ ${new Date(Date.now() - hours * 3600000).toISOString()}`
+    );
 
     if (hours !== this._resolvedRangeHours) {
       this._resolvedRangeHours = hours;
@@ -505,6 +514,9 @@ export class FermentationTrackerCard extends LitElement {
       });
       const states = result[this._gravityEntityId] ?? [];
       if (states.length < 2) {
+        console.warn(
+          `[fermentation-tracker:autoDetect] only ${states.length} history state(s) found in the last ${FermentationTrackerCard.AUTO_DETECT_LOOKBACK_HOURS}h lookback — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h. This usually means the entity is new or Home Assistant's recorder retention (recorder.purge_keep_days) is shorter than the lookback.`
+        );
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
 
@@ -533,6 +545,9 @@ export class FermentationTrackerCard extends LitElement {
         plausible.push({ t, v });
       }
       if (plausible.length < 2) {
+        console.warn(
+          `[fermentation-tracker:autoDetect] found ${states.length} history states but only ${plausible.length} plausible SG reading(s) (${FermentationTrackerCard.MIN_PLAUSIBLE_SG}–${FermentationTrackerCard.MAX_PLAUSIBLE_SG}, ${junkTimes.length} rejected as junk) — falling back to ${FermentationTrackerCard.AUTO_FALLBACK_HOURS}h.`
+        );
         return FermentationTrackerCard.AUTO_FALLBACK_HOURS;
       }
 
@@ -580,6 +595,9 @@ export class FermentationTrackerCard extends LitElement {
 
       const stableStartMs = this._findStableStart(workingPoints, rawStartIdx);
       const hoursSince = (Date.now() - stableStartMs) / 3600000;
+      console.info(
+        `[fermentation-tracker:autoDetect] ${states.length} states → ${plausible.length} plausible (${junkTimes.length} junk) → ${cleanFromJunk.length} after settling filter → ${workingPoints.length} after isolation filter. Gap-based start idx=${rawStartIdx}/${workingPoints.length - 1}, stable start=${new Date(stableStartMs).toISOString()} (${hoursSince.toFixed(1)}h ago).`
+      );
       return Math.max(1, Math.ceil(hoursSince));
     } catch (e) {
       console.error("[fermentation-tracker] auto range detection failed", e);
@@ -653,10 +671,10 @@ export class FermentationTrackerCard extends LitElement {
     const start = new Date(
       Date.now() - this._resolvedRangeHours * 60 * 60 * 1000
     );
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const end = new Date();
     try {
       const result = await this.hass.callWS<
-        Record<string, Array<{ s: string }>>
+        Record<string, Array<{ s: string; lu?: number; lc?: number }>>
       >({
         type: "history/history_during_period",
         start_time: start.toISOString(),
@@ -665,15 +683,38 @@ export class FermentationTrackerCard extends LitElement {
         minimal_response: true,
         no_attributes: true,
       });
+      // Scan the whole window rather than a narrow slice at `start`: if the
+      // resolved fermentation start predates Home Assistant's recorder
+      // retention, the exact instant may have been purged even though later
+      // history in the same window survives. Falling back to the oldest
+      // surviving reading gives an approximate OG instead of hiding the
+      // OG/Attenuation/ABV row entirely.
       const states = result[this._gravityEntityId];
       if (states && states.length > 0) {
-        const value = parseFloat(states[0].s);
+        const first = states[0];
+        const value = parseFloat(first.s);
         this._originalGravity = isNaN(value) ? undefined : value;
+        const tRaw =
+          typeof first.lu === "number"
+            ? first.lu
+            : typeof first.lc === "number"
+              ? first.lc
+              : undefined;
+        const tIso =
+          tRaw !== undefined
+            ? new Date(tRaw < 1e12 ? tRaw * 1000 : tRaw).toISOString()
+            : "unknown time";
+        console.info(
+          `[fermentation-tracker:OG] queried ${this._gravityEntityId} history from ${start.toISOString()} to now (${states.length} states found) — OG=${this._originalGravity} taken from oldest surviving reading (${tIso}).`
+        );
       } else {
         this._originalGravity = undefined;
+        console.warn(
+          `[fermentation-tracker:OG] no gravity history found for ${this._gravityEntityId} between ${start.toISOString()} and now — OG/Attenuation/ABV will be hidden. This usually means the resolved fermentation start predates Home Assistant's recorder retention (recorder.purge_keep_days).`
+        );
       }
     } catch (e) {
-      console.error("[fermentation-tracker] failed to fetch OG", e);
+      console.error("[fermentation-tracker:OG] failed to fetch OG", e);
     }
   }
 
