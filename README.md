@@ -23,7 +23,12 @@ The card defaults to "Auto" mode, which figures out when the current fermentatio
 3. Drops isolated one-off readings that have no nearby reading at a similar value
 4. Finds the most recent ≥6h gap in the cleaned readings — that's the start of the new fermentation
 
-The graph and OG calculation both anchor to that detected start time. You can override with explicit presets (1d / 3d / 7d / 14d / 30d) or a custom hours value.
+The graph and OG calculation both anchor to that detected start time. You can override this by setting **Time range** to:
+
+- **Now** — stamps the current moment as the fermentation start (handy when you've just pitched and don't want to wait for auto-detection to find the gap)
+- **Custom** — pick an exact start date/time yourself
+
+Either way, the graph and OG window grow from that fixed start up to the present, rather than a fixed-size lookback window.
 
 ## Installation
 
@@ -45,8 +50,8 @@ All configuration is done through the visual editor. The schema is also valid YA
 | `gravity_entity` | string | Override gravity entity (auto-detected from device's `state_class: measurement` sensors if blank) |
 | `temperature_entity` | string[] | One or more temperature entities (auto-detected from device's `device_class: temperature` sensor if blank). Multiple entities are plotted on the chart, and the first is shown in the temperature tile. |
 | `gravity_unit` | `Plato` \| `Brix` | If set, shows the converted value as a secondary line beneath the SG reading (SG is always primary) |
-| `time_range` | `auto` \| `1d` \| `3d` \| `7d` \| `14d` \| `30d` \| `custom` | Time window for the graph and OG calculation (default: `auto`) |
-| `time_range_custom_hours` | number | Hours to use when `time_range` is `custom` (1–720) |
+| `time_range` | `auto` \| `now` \| `custom` | How the fermentation start (used for the graph window and OG) is determined (default: `auto`) |
+| `fermentation_start` | string (ISO 8601 datetime) | The start timestamp. Set automatically when `time_range` is `now`; picked via a date/time selector when `custom` |
 | `show_graph` | boolean | Show the trend graph (default: on) |
 | `chart_type` | `default` \| `apex` | `default` uses HA's built-in history graph (stacks panels per unit). `apex` uses [apexcharts-card](https://github.com/RomRider/apexcharts-card) for a single chart with gravity on the left axis and temperature on the right axis. |
 | `show_delta_24h` | boolean | Show 24h change arrows on each tile (default: on) |

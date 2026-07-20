@@ -371,7 +371,7 @@ export class FermentationTrackerCard extends LitElement {
 
     // Resolve the time range when the gravity entity or range config changes
     if (this._gravityEntityId) {
-      const rangeKey = `${this._gravityEntityId}::${this._config?.time_range ?? "auto"}::${this._config?.time_range_custom_hours ?? ""}`;
+      const rangeKey = `${this._gravityEntityId}::${this._config?.time_range ?? "auto"}::${this._config?.fermentation_start ?? ""}`;
       if (rangeKey !== this._rangeKey) {
         this._rangeKey = rangeKey;
         this._resolveTimeRange();
@@ -390,21 +390,20 @@ export class FermentationTrackerCard extends LitElement {
 
   private async _resolveTimeRange(): Promise<void> {
     const range = this._config?.time_range ?? "auto";
-    const presetHours: Record<string, number> = {
-      "1d": 24,
-      "3d": 72,
-      "7d": 168,
-      "14d": 336,
-      "30d": 720,
-    };
 
     let hours: number;
-    if (range === "custom") {
-      hours = this._config?.time_range_custom_hours ?? 72;
-    } else if (range === "auto") {
+    if (range === "auto") {
       hours = await this._detectAutoRangeHours();
     } else {
-      hours = presetHours[range] ?? 72;
+      // "now" and "custom" both anchor to an absolute start timestamp — the
+      // window grows from there up to the present, rather than being a
+      // fixed-size lookback.
+      const startMs = this._config?.fermentation_start
+        ? new Date(this._config.fermentation_start).getTime()
+        : NaN;
+      hours = isNaN(startMs)
+        ? FermentationTrackerCard.AUTO_FALLBACK_HOURS
+        : Math.max(1, Math.ceil((Date.now() - startMs) / 3600000));
     }
 
     if (hours !== this._resolvedRangeHours) {
@@ -590,11 +589,13 @@ export class FermentationTrackerCard extends LitElement {
 
   public connectedCallback(): void {
     super.connectedCallback();
-    // Refresh historical baseline every 10 minutes
-    this._historicalRefreshTimer = setInterval(
-      () => this._fetchHistoricalValues(),
-      10 * 60 * 1000
-    );
+    // Every 10 minutes: refresh the historical baseline, and re-resolve the
+    // time range so a "now"/"custom" start keeps growing towards the present
+    // instead of freezing at whatever width it had on first load.
+    this._historicalRefreshTimer = setInterval(() => {
+      void this._resolveTimeRange();
+      this._fetchHistoricalValues();
+    }, 10 * 60 * 1000);
   }
 
   public disconnectedCallback(): void {

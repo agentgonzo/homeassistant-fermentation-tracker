@@ -20,8 +20,8 @@ const computeLabel = (schema: { name: string }): string => {
       return "Also show gravity as";
     case "time_range":
       return "Time range";
-    case "time_range_custom_hours":
-      return "Custom range (hours)";
+    case "fermentation_start":
+      return "Fermentation start";
     case "show_graph":
       return "Show trend graph";
     case "show_delta_24h":
@@ -79,7 +79,10 @@ export class FermentationCardEditor extends LitElement {
       .map((e) => e.entity_id);
   }
 
-  private _buildSchema(deviceId: string | undefined): HaFormSchema {
+  private _buildSchema(
+    deviceId: string | undefined,
+    timeRange: string | undefined
+  ): HaFormSchema {
     // We don't filter the device list because users running iSpindel/Tilt via
     // MQTT discovery have integration=mqtt rather than ispindel/tilt_ble, and
     // ha-form's device selector doesn't support custom filter callbacks.
@@ -116,23 +119,22 @@ export class FermentationCardEditor extends LitElement {
             select: {
               mode: "dropdown",
               options: [
-                { value: "auto", label: "Auto (since fermentation start)" },
-                { value: "1d", label: "Last 24 hours" },
-                { value: "3d", label: "Last 3 days" },
-                { value: "7d", label: "Last 7 days" },
-                { value: "14d", label: "Last 14 days" },
-                { value: "30d", label: "Last 30 days" },
-                { value: "custom", label: "Custom" },
+                { value: "auto", label: "Auto (detect fermentation start)" },
+                { value: "now", label: "Now (start fermentation timer today)" },
+                { value: "custom", label: "Custom (pick a start date/time)" },
               ],
             },
           },
         },
-        {
-          name: "time_range_custom_hours",
-          selector: {
-            number: { min: 1, max: 720, step: 1, mode: "box" },
-          },
-        },
+        ...(timeRange === "custom"
+          ? [
+              {
+                name: "fermentation_start",
+                required: true,
+                selector: { datetime: {} },
+              },
+            ]
+          : []),
         { name: "show_graph", selector: { boolean: {} } },
         { name: "show_delta_24h", selector: { boolean: {} } },
         { name: "show_device_info", selector: { boolean: {} } },
@@ -198,7 +200,7 @@ export class FermentationCardEditor extends LitElement {
   protected render() {
     if (!this.hass || !this._config) return nothing;
 
-    const schema = this._buildSchema(this._config.device_id);
+    const schema = this._buildSchema(this._config.device_id, this._config.time_range);
     // Strip undefined values so ha-form treats them as "not set"
     const data = Object.fromEntries(
       Object.entries(this._config).filter(([, v]) => v !== undefined)
@@ -233,6 +235,20 @@ export class FermentationCardEditor extends LitElement {
     if (newConfig.device_id !== this._config.device_id) {
       newConfig.gravity_entity = undefined;
       newConfig.temperature_entity = undefined;
+    }
+
+    // Selecting "now" snapshots the current moment as the fermentation start.
+    // Switching to "custom" without an existing start seeds it with "now" too,
+    // so the datetime picker doesn't come up empty.
+    const enteringNow =
+      newConfig.time_range === "now" && this._config.time_range !== "now";
+    const enteringCustomWithoutStart =
+      newConfig.time_range === "custom" && !newConfig.fermentation_start;
+    if (enteringNow || enteringCustomWithoutStart) {
+      newConfig.fermentation_start = new Date().toISOString();
+    }
+    if (newConfig.time_range === "auto") {
+      newConfig.fermentation_start = undefined;
     }
 
     this._config = newConfig;
