@@ -1,5 +1,7 @@
 # Fermentation Tracker Card
 
+<img src="images/icon.png" alt="Fermentation Tracker icon" width="96" height="96" align="right">
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 ![GitHub release](https://img.shields.io/github/v/release/agentgonzo/homeassistant-fermentation-tracker)
 
